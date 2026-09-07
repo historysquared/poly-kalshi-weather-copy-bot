@@ -1,7 +1,7 @@
 [project]
 name = "weather-alpha-lab"
 version = "0.1.0"
-description = "Kalshi-first weather market research and paper-trading engine"
+description = "Weather-market research and paper-trading engine for Kalshi and Polymarket US"
 requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.115",
@@ -11,6 +11,7 @@ dependencies = [
   "pydantic-settings>=2.4",
   "sqlalchemy>=2.0",
   "pyyaml>=6.0",
+  "pyarrow>=17.0",
 ]
 
 [project.optional-dependencies]
