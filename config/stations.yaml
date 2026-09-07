@@ -1,0 +1,25 @@
+stations:
+  KDCA:
+    name: Ronald Reagan Washington National Airport
+    latitude: 38.8512
+    longitude: -77.0402
+    timezone: America/New_York
+    nearby: [KIAD, KBWI]
+  KORD:
+    name: Chicago O'Hare International Airport
+    latitude: 41.9742
+    longitude: -87.9073
+    timezone: America/Chicago
+    nearby: [KMDW, KPWK]
+  KJFK:
+    name: John F. Kennedy International Airport
+    latitude: 40.6413
+    longitude: -73.7781
+    timezone: America/New_York
+    nearby: [KLGA, KEWR]
+  KBOS:
+    name: Boston Logan International Airport
+    latitude: 42.3656
+    longitude: -71.0096
+    timezone: America/New_York
+    nearby: [KBED, KOWD]
