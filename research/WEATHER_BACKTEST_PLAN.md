@@ -2,22 +2,37 @@
 
 The objective is not to prove one social-media strategy. It is to run a broad, timestamp-safe tournament across every weather trade family that has a plausible economic mechanism, then require out-of-sample persistence.
 
+## Project boundary
+
+This weather project is intentionally separate from all BTC/crypto research projects and databases.
+
+- Canonical codebase: `historysquared/poly-kalshi-weather-copy-bot`
+- Weather data, normalized stores, backtests, results, and execution logic live here.
+- BTC repos/datasets may be inspected read-only for engineering ideas such as Parquet loading, no-lookahead joins, orderbook replay, fee/slippage modeling, reporting, or deployment patterns.
+- Do not import BTC strategies, BTC features, BTC tables, BTC results, or BTC runtime dependencies into this project.
+- External source data may be transformed into weather-specific normalized stores, but the weather runtime must not depend on a BTC database or BTC project checkout.
+
 ## Data sources
 
-1. Existing project databases: use them first for market metadata, outcomes, historical weather observations, forecasts, Kalshi, and Polymarket/Polymarket US data.
-2. pmxt Polymarket v2 archive: hourly Parquet event stream, coverage beginning 2026-04-13T19 UTC. Direct object pattern: `https://r2v2.pmxt.dev/polymarket_orderbook_YYYY-MM-DDTHH.parquet`.
-3. pmxt Kalshi archive where useful as a second historical orderbook source.
+1. Existing weather-relevant databases available to the project: use them for market metadata, outcomes, historical weather observations/forecasts, and Kalshi/Polymarket weather records where present.
+2. pmxt Polymarket v2 archive: hourly Parquet CLOB event stream, coverage beginning 2026-04-13T19 UTC. Direct object pattern: `https://r2v2.pmxt.dev/polymarket_orderbook_YYYY-MM-DDTHH.parquet`.
+3. Polymarket Gamma public metadata API: used to map pmxt condition/token IDs to weather market questions, outcomes, dates, and resolution metadata.
+4. pmxt Kalshi archive where useful as a second historical orderbook source.
+5. Official weather observations/settlement sources and archived forecast vintages for as-of weather-model backtests.
 
-Never replace executable prices with midpoint prices. Use the best historical ask available at or after the simulated decision timestamp and record quote age/depth when available.
+The pmxt raw hourly files are large. The ingestion pipeline should download one hour, predicate-filter to weather condition IDs, write a compact weather-only Parquet partition under `data/weather/`, and optionally delete the raw hour. Raw external archives are never committed to Git.
+
+Never replace executable prices with midpoint prices. Use historical executable asks reconstructed from the book available at the simulated decision timestamp, with depth, fee, quote-age, and slippage controls.
 
 ## Canonical normalized backtest row
 
 Every candidate contract snapshot should contain:
 
-- timestamp / timestamp_received
+- timestamp / source timestamp / timestamp_received
 - venue
-- event_id / market_id / asset_id
+- event_id / condition_id / market_id / asset_id
 - city / station / settlement date / timezone
+- exact settlement source/rule version
 - contract shape and exact lower/upper bounds
 - YES bid/ask and NO bid/ask
 - visible depth and spread when available
@@ -28,7 +43,7 @@ Every candidate contract snapshot should contain:
 - daily high/low observed so far
 - eventual official settlement value and winning bucket
 
-All joins must be AS-OF joins using information that had actually arrived by the simulated timestamp.
+All joins must be AS-OF joins using information that had actually arrived by the simulated timestamp. `timestamp_received` is the default market-data availability clock unless there is a documented reason to use another field.
 
 ## Strategy families
 
@@ -146,8 +161,8 @@ Do not assume the social-media wallets hold every leg to settlement.
 Run at least three execution scenarios:
 
 1. Optimistic: touch best ask immediately, stated fees only.
-2. Realistic: best ask + slippage reserve, minimum visible size, quote freshness check.
-3. Conservative: next worse tick/level, larger slippage, delayed entry after signal.
+2. Realistic: walk displayed asks for requested size, add documented fees, minimum visible size, quote freshness check.
+3. Conservative: delayed entry, worse level/tick, larger slippage reserve, and capacity haircut.
 
 If depth is known, cap simulated size at observed executable depth. Never fill more size than was displayed without an explicit fill model.
 
