@@ -1,22 +1,29 @@
 # Weather Alpha Lab
 
-Kalshi-first weather-market research and paper-trading engine. The project is designed to answer one question: **is the executable Kalshi price materially wrong relative to a calibrated probability of the official weather settlement?**
+Weather-market research and paper-trading engine for Kalshi and Polymarket US. The objective is to determine whether executable prediction-market prices are materially wrong relative to calibrated probabilities of official weather settlement outcomes.
 
-## v0.1 scope
+## Current research stack
 
-Working foundation:
 - public Kalshi market discovery/read-only quotes
+- Polymarket US normalization / cross-venue comparison scaffold
 - official NWS station observations
 - Open-Meteo ensemble ingestion
 - Gaussian bucket / above / below probabilities
-- spread, liquidity and minimum-edge filters
-- settlement-nowcast primitive using official anchor + nearby trend + forecast blend
-- append-only research archive
-- paper portfolio primitives
-- FastAPI research endpoint
-- unit tests
+- settlement-nowcast primitive
+- pmxt Polymarket v2 historical CLOB ingestion
+- depth-aware historical orderbook reconstruction
+- exhaustive weather strategy tournament
+- NOAA GOES-19 / GOES-18 ABI cloud feature ingestion
+- NOAA AWS HRRR point-baseline retrieval
+- IEM/NCEI historical one-minute ASOS surface telemetry
+- transparent model-vs-observation `AlphaDelta` physical-reality score
+- append-only research archive and paper portfolio primitives
 
-No live order placement is implemented.
+No live order placement is enabled in the current research branch.
+
+## Project boundary
+
+This repo is weather-only. BTC/crypto repos and databases may be inspected read-only for engineering ideas, but weather runtime code, data, tables, results, backtests and execution remain independent.
 
 ## Run
 
@@ -28,19 +35,25 @@ pytest -q
 uvicorn weather_alpha.main:app --host 0.0.0.0 --port 8000
 ```
 
-Then call `/scan` with a real Kalshi weather `series` ticker.
+## Historical market data
 
-## Research roadmap
+The backtest branch can stream the pmxt Polymarket v2 hourly Parquet archive, reconstruct executable books and extract only weather markets into a compact weather-only cache under `data/weather/`.
 
-1. Add exact Kalshi weather contract normalization and settlement metadata.
-2. Add high-frequency ASOS/MADIS/Synoptic observations and nearby-station correlation learning.
-3. Add NBM, HRRR, ECMWF/AIFS and Aurora adapters as separate model competitors.
-4. Archive every forecast vintage and score Brier, MAE, RMSE, ROI and calibration by station/horizon.
-5. Learn station/horizon-specific bias and sigma rather than using fixed uncertainty floors.
-6. Add historical market snapshots and true executable backtests.
-7. Add Polymarket as a second venue adapter only after the Kalshi research pipeline is stable.
-8. Only after successful forward testing, add authenticated execution as a separate disabled-by-default module.
+## Satellite / physical-reality alpha
+
+The live/replay physical layer compares what the atmosphere is doing now against the model baseline:
+
+- GOES-19 = operational GOES-East
+- GOES-18 = operational GOES-West
+- ABI Band 2 = daytime reflectance / solar attenuation feature
+- ABI Band 13 = day/night cloud brightness-temperature structure
+- HRRR = 2 m temperature, total cloud cover, downward shortwave baseline
+- one-minute ASOS history = temperature/pressure velocity and front features
+
+`cloud_optical_depth_proxy` is deliberately a proxy, not an official physical cloud-optical-depth retrieval. `AlphaDelta` is a research feature, not a probability. Both must be calibrated historically before they can alter trading probabilities.
+
+See `research/CLOUD_ALPHA_ARCHITECTURE.md` and `research/WEATHER_BACKTEST_PLAN.md`.
 
 ## Principle
 
-Forecast accuracy is not the objective. **Expected value after executable market prices is the objective.**
+Forecast accuracy by itself is not the objective. **Net expected value at executable market prices, after costs and realistic latency, is the objective.**
