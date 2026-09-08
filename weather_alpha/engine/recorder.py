@@ -97,7 +97,7 @@ class StateStore:
 
     def mark(self, value: ForwardMark) -> None:
         self.db.execute(
-            "INSERT OR REPLACE INTO marks VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT OR REPLACE INTO marks VALUES(?,?,?,?,?,?,?,?,?,?)",
             (value.signal_id, value.horizon_seconds, value.mark_timestamp.isoformat(), value.venue,
              value.contract_id, value.yes_bid, value.yes_ask, value.no_bid, value.no_ask,
              value.executable_value),
