@@ -1,7 +1,7 @@
 [project]
 name = "weather-alpha-lab"
-version = "0.1.0"
-description = "Kalshi/Polymarket weather market research and paper-trading engine"
+version = "0.2.0"
+description = "Kalshi/Polymarket weather alpha research, backtest, paper and guarded live-trading engine"
 requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.115",
@@ -14,6 +14,8 @@ dependencies = [
   "numpy>=2.0",
   "pandas>=2.2",
   "pyarrow>=17.0",
+  "duckdb>=1.1",
+  "cryptography>=43.0",
   "xarray>=2024.7",
   "netcdf4>=1.7",
   "h5netcdf>=1.3",
