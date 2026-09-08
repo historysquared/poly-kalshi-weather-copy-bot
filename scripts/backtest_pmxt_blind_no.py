@@ -12,7 +12,6 @@ from weather_alpha.backtest.pmxt import BookState, iter_events
 from weather_alpha.backtest.polymarket_manifest import load_manifest
 from weather_alpha.backtest.validation import EventReturn, rank_results, validate_strategy
 
-
 SITE_RE = re.compile(r"(?:site=|station[^A-Za-z0-9]+)([a-zA-Z]{3,5})", re.I)
 
 
@@ -36,63 +35,70 @@ def main() -> None:
 
     manifest = load_manifest(Path(args.manifest))
     resolved = [m for m in manifest if m.resolved_yes is not None]
-    no_token = {}
     market_by_token = {}
     for m in resolved:
         token = m.token_by_outcome.get("No") or m.token_by_outcome.get("NO")
         if token:
-            no_token[token] = m
             market_by_token[token] = m
 
     paths = sorted(Path(args.cache).glob("*.parquet"))
     if not paths:
         raise SystemExit(f"no compact pmxt parquet under {args.cache}")
-    if not no_token:
+    if not market_by_token:
         raise SystemExit("manifest has no unambiguously resolved binary weather markets")
 
     thresholds = [int(x) / 100 for x in args.min_no_cents.split(",") if x.strip()]
     latencies = [int(x) for x in args.latencies.split(",") if x.strip()]
-    states = {token: BookState.empty() for token in no_token}
-
-    # Trigger once per token/threshold. Each latency variant is filled at the first
-    # globally observed archive event at/after trigger+delay using the then-current book.
-    trigger_at = {}
-    filled = set()
     returns: list[EventReturn] = []
     raw_trades: list[dict] = []
 
-    events = iter_events(paths, asset_ids=set(no_token), event_types={"book", "price_change"})
+    # pmxt is physically sorted by (market, asset_id, timestamp_received), not
+    # globally by timestamp. That is ideal here: process each NO token's contiguous
+    # chronological run independently. This avoids both a false cross-asset clock
+    # and the quadratic pending-order loop used by the first smoke implementation.
+    current_token = None
+    state = BookState.empty()
+    trigger_at: dict[float, object] = {}
+    filled: set[tuple[float, int]] = set()
+    latest_fee_bps = 0
+
+    events = iter_events(paths, asset_ids=set(market_by_token), event_types={"book", "price_change", "last_trade_price"})
     for ev in events:
-        state = states[ev.asset_id]
-        state.apply(ev)
+        if ev.asset_id != current_token:
+            current_token = ev.asset_id
+            state = BookState.empty()
+            trigger_at = {}
+            filled = set()
+            latest_fee_bps = 0
+
+        if ev.fee_rate_bps is not None:
+            latest_fee_bps = max(0, ev.fee_rate_bps)
+        if ev.event_type in {"book", "price_change"}:
+            state.apply(ev)
         now = ev.timestamp_received
         ask = state.best_ask
+        if ask is None or ask <= 0:
+            continue
 
-        if ask is not None and ask <= args.max_entry:
+        if ask <= args.max_entry:
             for threshold in thresholds:
-                key = (ev.asset_id, threshold)
-                if key not in trigger_at and ask >= threshold:
-                    trigger_at[key] = now
+                if threshold not in trigger_at and ask >= threshold:
+                    trigger_at[threshold] = now
 
-        # Process all pending fills against books as-of this archive receipt time.
-        for (token, threshold), signal_time in list(trigger_at.items()):
-            m = market_by_token[token]
+        m = market_by_token[current_token]
+        for threshold, signal_time in trigger_at.items():
             for latency in latencies:
-                fill_key = (token, threshold, latency)
+                fill_key = (threshold, latency)
                 if fill_key in filled or now < signal_time + timedelta(seconds=latency):
                     continue
-                current = states[token].best_ask
+                current = state.best_ask
                 if current is None or current <= 0 or current > args.max_entry:
                     continue
-                # pmxt exposes the market fee rate on events. Use the current event's
-                # rate when this is the same token; otherwise reserve zero here and
-                # label the execution case so fee-model sensitivity can be run later.
-                bps = ev.fee_rate_bps if ev.asset_id == token and ev.fee_rate_bps is not None else 0
-                fee = current * max(0, bps) / 10_000.0
+                fee = current * latest_fee_bps / 10_000.0
                 all_in = current + fee
                 won = not bool(m.resolved_yes)
                 pnl = (1.0 if won else 0.0) - all_in
-                strategy = f"blind_no_min_{int(round(threshold*100)):02d}c"
+                strategy = f"blind_no_min_{int(round(threshold * 100)):02d}c"
                 row = EventReturn(
                     strategy=strategy,
                     event_id=m.event_id or m.event_slug,
@@ -140,7 +146,7 @@ def main() -> None:
                 d["verdict"] = r.verdict.value
                 w.writerow(d)
 
-    print(f"resolved_markets={len(resolved)} resolved_no_tokens={len(no_token)}")
+    print(f"resolved_markets={len(resolved)} resolved_no_tokens={len(market_by_token)}")
     print(f"pmxt_files={len(paths)} fills={len(returns)}")
     for r in ranked[:20]:
         print(
