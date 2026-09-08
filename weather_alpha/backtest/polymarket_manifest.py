@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterator, Optional
 
@@ -66,11 +65,7 @@ def _outcome_prices(value: Any) -> tuple[float, ...]:
 
 
 def _resolved_outcome(outcomes: tuple[str, ...], prices: tuple[float, ...], closed: bool) -> Optional[str]:
-    """Infer terminal binary outcome only from an unambiguous Gamma terminal vector.
-
-    We intentionally do not use a merely high market price as resolution. A closed
-    market must have exactly one outcome at ~1 and all others at ~0.
-    """
+    """Infer terminal binary outcome only from an unambiguous Gamma terminal vector."""
     if not closed or not outcomes or len(outcomes) != len(prices):
         return None
     winners = [i for i, p in enumerate(prices) if p >= 0.999]
@@ -83,11 +78,16 @@ def _resolved_outcome(outcomes: tuple[str, ...], prices: tuple[float, ...], clos
 def search_weather_markets(
     *,
     query: str = "highest temperature",
-    max_pages: int = 200,
+    max_pages: int = 100,
     limit_per_type: int = 50,
     timeout_s: float = 30.0,
 ) -> Iterator[PolymarketWeatherMarket]:
-    """Discover historical Polymarket weather markets through Gamma public search."""
+    """Discover historical Polymarket weather markets through Gamma public search.
+
+    Gamma currently rejects public-search pages beyond its pagination ceiling. A
+    terminal 422 after at least one successful page is therefore treated as the
+    end of the result set rather than as a data-pipeline failure.
+    """
     seen: set[str] = set()
     with httpx.Client(timeout=timeout_s, follow_redirects=True) as client:
         for page in range(1, max_pages + 1):
@@ -103,6 +103,8 @@ def search_weather_markets(
                     "search_profiles": "false",
                 },
             )
+            if response.status_code == 422 and page > 1:
+                break
             response.raise_for_status()
             payload = response.json()
             events = payload.get("events") or []
