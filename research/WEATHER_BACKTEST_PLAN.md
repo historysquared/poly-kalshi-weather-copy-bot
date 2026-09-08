@@ -14,13 +14,22 @@ This weather project is intentionally separate from all BTC/crypto research proj
 
 ## Data sources
 
-1. Existing weather-relevant databases available to the project: use them for market metadata, outcomes, historical weather observations/forecasts, and Kalshi/Polymarket weather records where present.
-2. pmxt Polymarket v2 archive: hourly Parquet CLOB event stream, coverage beginning 2026-04-13T19 UTC. Direct object pattern: `https://r2v2.pmxt.dev/polymarket_orderbook_YYYY-MM-DDTHH.parquet`.
-3. Polymarket Gamma public metadata API: used to map pmxt condition/token IDs to weather market questions, outcomes, dates, and resolution metadata.
-4. pmxt Kalshi archive where useful as a second historical orderbook source.
-5. NOAA GOES AWS Open Data: GOES-19 East, GOES-18 West, historical GOES-16 where appropriate; ABI Band 2 and Band 13 CMIP features.
-6. NOAA AWS HRRR archive: 2 m temperature, total cloud cover, downward shortwave radiation, with explicit model-cycle availability.
-7. IEM/NCEI one-minute ASOS archive for historical high-frequency surface telemetry. This is a fast feature source; settlement authority remains whatever each contract specifies.
+1. Existing weather-relevant databases available to the project.
+2. pmxt Polymarket v2 hourly Parquet CLOB archive.
+3. Polymarket Gamma metadata for condition/token mapping.
+4. pmxt Kalshi archive where useful.
+5. NOAA GOES AWS Open Data: GOES-19 East, GOES-18 West, historical GOES-16.
+6. NOAA AWS HRRR archive with explicit model-cycle availability.
+7. IEM/NCEI one-minute ASOS history.
+8. NEXRAD Level II via the current `unidata-nexrad-level2` bucket; the old `noaa-nexrad-level2` bucket is deprecated.
+9. NOAA MRMS via `noaa-mrms-pds`.
+10. GOES GLM Level-2 lightning (`GLM-L2-LCFA`) from GOES-19/18 buckets.
+11. NCEP RTMA-RU 2.5 km CONUS analysis every 15 minutes, with actual product availability timestamp retained.
+12. NWS Area Forecast Discussions (AFD) via public NWS product feeds/API.
+13. Optional DOT/RWIS and CWOP/APRS observations only after station-level QC, clock-quality checks, and historical availability are established.
+14. Aviation METAR/SPECI feeds as fast official-station events, preserving publication/receipt timestamps.
+
+NWSChat is not assumed to be a public trading-data feed. NWSChat 2.0 is a partner/core-partner communication service requiring account access, so the production system must not depend on it unless lawful authorized access is separately established.
 
 The pmxt raw hourly files are large. The ingestion pipeline should download one hour, predicate-filter to weather condition IDs, write a compact weather-only Parquet partition under `data/weather/`, and optionally delete the raw hour. Raw external archives are never committed to Git.
 
@@ -28,188 +37,85 @@ Never replace executable prices with midpoint prices. Use historical executable 
 
 ## Canonical normalized backtest row
 
-Every candidate contract snapshot should contain:
+Every candidate contract snapshot should contain timestamp/source timestamp/received timestamp; venue/market identifiers; city/station/date/timezone; settlement rule/version; exact contract bounds; executable YES/NO bid/ask and depth; fees/slippage; time-to-close/settlement; all forecast/model features known then; official observations known then; daily high/low so far; satellite/radar/lightning/RTMA provenance and feature timestamps; text-product issuance time; and eventual official settlement.
 
-- timestamp / source timestamp / timestamp_received
-- venue
-- event_id / condition_id / market_id / asset_id
-- city / station / settlement date / timezone
-- exact settlement source/rule version
-- contract shape and exact lower/upper bounds
-- YES bid/ask and NO bid/ask
-- visible depth and spread when available
-- fee schedule / fee reserve / slippage reserve
-- time to close and time to expected settlement
-- forecast model probabilities known at that timestamp
-- official weather observations known at that timestamp
-- daily high/low observed so far
-- satellite scan/object timestamp and source key
-- Band 2 reflectance/transmission features
-- Band 13 brightness-temperature/cloud-structure features
-- HRRR model cycle, forecast hour, temperature/cloud/shortwave baseline
-- high-frequency ASOS dT/dt, pressure tendency and front features
-- eventual official settlement value and winning bucket
+All joins must be AS-OF joins using information actually available by the simulated timestamp. `timestamp_received` is the default market-data availability clock unless another field is explicitly justified.
 
-All joins must be AS-OF joins using information that had actually arrived by the simulated timestamp. `timestamp_received` is the default market-data availability clock unless there is a documented reason to use another field.
-
-## Strategy families
+## Core strategy families
 
 ### A. Blind narrow-bucket NO baseline
-
-Purpose: test the claim that exact/narrow ranges are structurally overpriced without using weather information.
-
-Grid:
-- NO entry price: 0.80–0.99 in 1-cent increments
-- YES implied price: reciprocal range
-- bucket width: 1°F, 2°F, 3°F+
-- hours to close: <1, 1–3, 3–6, 6–12, 12–24, >24
-- city/station
-- day of year / season
-- liquidity / spread quantile
-
-Report both win rate and ROI. A high NO win rate is meaningless unless it exceeds the break-even probability implied by the actual NO purchase price plus costs.
+Test NO entry prices 0.80–0.99, bucket widths, horizons, cities, seasons, liquidity and spread bands. Report ROI, not just win rate.
 
 ### B. Model-filtered NO tails
-
-Buy NO when calibrated fair NO probability exceeds all-in executable NO ask.
-
-Grid:
-- minimum net edge: 1c, 2c, 3c, 4c, 5c, 7.5c, 10c
-- model: market-only base rate, GFS ensemble, NBM, HRRR, ECMWF/AIFS, NWS, blended, station-nowcast
-- probability shrinkage level
-- time to settlement
-- quote age / spread / depth
+Buy NO only when calibrated fair NO exceeds all-in executable ask; sweep edge thresholds, models, shrinkage, horizon and liquidity filters.
 
 ### C. Best single YES bucket
-
-Buy the single bucket with highest positive fair-probability minus executable YES ask.
-
-Grid the same edge thresholds and model variants as B.
+Buy the single bucket with the highest positive calibrated probability minus all-in executable YES ask.
 
 ### D. Adjacent YES basket
-
-For mutually exclusive temperature buckets, enumerate contiguous baskets of 2–8 adjacent ranges. Compare summed calibrated probability mass to summed executable YES asks plus costs. Test:
-- 2, 3, 4, 5, 6, 7, 8 legs
-- minimum basket edge 2c–20c
-- centered-on-mode baskets
-- optimizer-selected contiguous baskets
-- fixed-dollar and equal-share sizing
-- hold to resolution vs profit-taking exits
+Enumerate contiguous baskets of 2–8 mutually exclusive ranges and compare summed fair probability with summed executable asks plus costs.
 
 ### E. Late-day impossible-bucket NO
-
-For daily-high markets, once official observed high exceeds a bucket upper bound, that bucket is mathematically unable to win. Test buying NO subject to:
-- minimum locked edge after fees/slippage
-- quote age
-- minimum displayed size
-- settlement-source confirmation
-- delay after official observation publication: 0, 15s, 30s, 60s, 2m, 5m
-
-This is the highest-priority nonforecast strategy.
+Once an official observed daily high exceeds a bucket upper bound, test buying NO under quote-age, liquidity and latency constraints.
 
 ### F. Near-impossible bucket NO
-
-Not mathematically eliminated, but weather path makes the remaining move very unlikely. Use current official high, remaining daylight, short-range model path, cloud/solar/wind, nearby stations, and calibrated residual distribution.
+Use remaining daylight, current high, forecast path and residual distribution to identify brackets that are not mathematically dead but have collapsed probability.
 
 ### G. Forecast-revision momentum
-
-Trade when latest model run materially changes bucket probability but market price has not responded. Measure 5m/15m/30m/60m subsequent price response and settlement P&L.
+Measure price response and settlement P&L after new model runs shift fair bucket probabilities.
 
 ### H. Observation shock / stale quote catch-up
-
-Trade after new METAR/SPECI/ASOS observation changes settlement probability while market quote remains stale. Test latency windows and quote-age thresholds.
+Trade after new METAR/SPECI/ASOS observations change settlement probability while executable quotes remain stale.
 
 ### I. Whole-distribution relative value
-
-Within one weather event, compute market-implied distribution across all mutually exclusive buckets. Test:
-- sum of executable YES asks
-- sum of executable NO equivalents
-- local distortions versus smoothed calibrated distribution
-- butterfly-style relative value across neighboring ranges
-- tails versus center mispricing
-
-Do not call a basket risk-free unless payout mechanics and settlement semantics make it locked.
+Treat each event as one probability distribution and test local distortions, tails vs center and executable basket sums.
 
 ### J. Cross-venue relative value
+Compare Kalshi and Polymarket US only after exact station/source/date/rounding/observation-window/bound equivalence is established.
 
-Only compare Kalshi and Polymarket US contracts after exact semantic equivalence is established: same station/source, date, variable, observation window, rounding, bounds, inclusivity, and settlement procedure.
-
-Test:
-- buy cheaper equivalent YES
-- buy cheaper equivalent NO
-- complementary locked pairs when verified
-- synthetic unions of narrower buckets versus a wider bucket on the other venue
-
-### K. Market-only microstructure signals
-
-Without weather model:
-- stale quote age
-- sudden spread widening/compression
-- orderbook imbalance
-- price reaction after large trade
-- mean reversion after short-lived bucket dislocation
-- cross-bucket probability inconsistency
-
-These are controls to determine whether profit comes from weather information or exchange microstructure.
+### K. Market-only microstructure controls
+Test quote staleness, spread changes, order-book imbalance, large-trade response and cross-bucket inconsistencies without weather features.
 
 ### L. Satellite / high-frequency physical-reality alpha
+Test GOES Band 2 solar-transmission mismatch, Band 13 cloud structure, high-frequency surface dT/dt/pressure, observed-vs-HRRR error, marine-layer clearing and rapid-front rollover. AlphaDelta is a feature score, not a probability, and must be calibrated walk-forward.
 
-Test whether fast physical observations move the final-high distribution before prediction-market prices adjust.
+### M. Convective cooling / precipitation-arrival alpha
+Use NEXRAD, MRMS and GLM to detect a storm-driven temperature rollover before conventional hourly forecasts reflect it.
 
-Features:
-- GOES Band 2 reflectance / solar-transmission proxy versus HRRR cloud baseline
-- GOES Band 13 brightness temperature / cold-cloud fraction
-- one-minute ASOS temperature velocity
-- ASOS pressure tendency
-- current observed-vs-HRRR temperature error
-- time to expected daily peak
-- later: wind-shift/front features and coastal marine-layer burnoff metrics
+Features and tests:
+- nearest >=30/35/40/45 dBZ radar core distance to settlement station
+- bearing of core relative to surface wind-from direction
+- radial approach speed from successive radar/MRMS frames
+- MRMS precipitation-rate field at station and along upwind corridor
+- GLM flash counts within 5/10/25/50 km over rolling 1/5/10/20 minute windows
+- lightning initiation before first >35 dBZ core as a separate lead-time feature
+- official temperature dT/dt before/after first precipitation
+- pressure rise and wind-shift confirmation
+- whether daily high had already been set at signal time
+- market response after 30s/1m/2m/5m/10m/15m
 
-Variants:
-- cloud suppression downside
-- clearer-than-HRRR upside
-- rapid-front/temperature-rollover
-- marine-layer burnoff lag by coastal station
-- AlphaDelta-filtered NO tails
-- AlphaDelta-adjusted adjacent YES baskets
-- AlphaDelta as a calibrated residual-model feature instead of a standalone threshold
+Do not assume rain always creates a tradable cooling event. Calibrate by station, season, storm mode, humidity/dewpoint depression, time of day and observed temperature trajectory.
 
-Latency grid:
-- 0s, 30s, 1m, 2m, 5m, 10m, 15m after source data becomes available
+### N. RTMA-RU assimilation delta
+Compare latest 15-minute RTMA-RU analyzed surface state with the older forecast baseline available to the market. Test whether RTMA-RU temperature/wind/cloud deltas improve final-high residual forecasts and market P&L after true product latency.
 
-The current AlphaDelta weights are research priors only. The actual production mapping must be learned and validated walk-forward by station/horizon/season.
+### O. Forecaster-intent text alpha
+Archive every AFD issue and compare text revisions with the next numeric forecast/market move. Start with transparent phrase features (lowered/raised highs, persistent stratus, delayed/earlier clearing, model-confidence language) before any complex NLP. Strictly use issuance time and avoid backfilled text. Test whether text adds incremental signal beyond the latest numerical guidance.
+
+### P. Auxiliary mesonet / RWIS / CWOP front propagation
+Use non-airport stations only as proxy sensors. Require per-station quality scoring, timestamp sanity, persistent bias estimation, elevation/distance metadata and robust outlier rejection. Test whether a front/cloud/cooling feature observed at neighboring stations predicts the settlement-station observation with usable lead time.
 
 ## Exit variants
 
-Every entry strategy should be tested under:
-- hold to resolution
-- exit when edge <= 0
-- exit at +10%, +25%, +50%, +100% return
-- stop at -25%, -50% where executable
-- time-based exit 15m/30m/60m before close
-
-Do not assume the social-media wallets hold every leg to settlement.
+Every entry strategy should be tested under hold-to-resolution, exit-when-edge<=0, profit targets, stops where executable, and time-based exits. Do not assume public wallets hold every position to settlement.
 
 ## Execution assumptions
 
-Run at least three execution scenarios:
-
-1. Optimistic: touch best ask immediately, stated fees only.
-2. Realistic: walk displayed asks for requested size, add documented fees, minimum visible size, quote freshness check.
-3. Conservative: delayed entry, worse level/tick, larger slippage reserve, and capacity haircut.
-
-If depth is known, cap simulated size at observed executable depth. Never fill more size than was displayed without an explicit fill model.
+Run optimistic, realistic and conservative fill scenarios. Depth-aware fills may not exceed displayed size without an explicit queue/fill model. Include source-to-signal, signal-to-order and exchange-ack latency sweeps.
 
 ## Statistical protocol
 
-- Train/calibrate on earlier dates only.
-- Walk forward through later dates.
-- Hold out entire cities/stations as a robustness test.
-- Report results by strategy, city, station, season, horizon, price band, spread band, and model.
-- Minimum sample counts before promoting a variant.
-- Show bootstrap confidence intervals for ROI and P&L/trade.
-- Track Brier/log loss for probability models separately from trading P&L.
-- Correct for multiple testing: broad parameter sweeps are research, not evidence until the winning rules survive untouched out of sample.
+Train/calibrate on earlier dates only; walk forward; hold out cities/stations; report by station/season/horizon/price/spread/model; bootstrap ROI/P&L confidence intervals; track Brier/log loss separately from trading P&L; correct for multiple testing; and promote only untouched rules that persist out of sample.
 
 ## Primary ranking metrics
 
@@ -218,17 +124,12 @@ If depth is known, cap simulated size at observed executable depth. Never fill m
 3. P&L per event/day
 4. Maximum drawdown
 5. Profit factor
-6. Sharpe-like daily return statistic
-7. Win rate only as a descriptive statistic
-8. Calibration/Brier/log loss for probability-producing models
-9. Capacity: executable depth at historical signals
+6. Daily Sharpe-like statistic
+7. Win rate as descriptive only
+8. Calibration/Brier/log loss
+9. Historical executable capacity
+10. Incremental value versus simpler baseline strategy
 
-## First research question
+## First research queue
 
-Run A, B, D, E, and L first. They directly test the claims in the weather-wallet posts and the physical-reality thesis:
-
-- Is blind NO actually profitable at 90–99c?
-- Does a model filter turn NO tails profitable?
-- Are adjacent YES baskets superior to single-bucket entries?
-- Is late official-observation bucket elimination the real source of the smooth high-win-rate P&L?
-- Does GOES + high-frequency surface telemetry add incremental edge beyond HRRR and existing forecast models after realistic data/execution latency?
+Run A, B, D, E, L, M, N and O first. The key questions are whether blind NO is truly profitable, whether model filtering or adjacent baskets improve it, whether eliminated-bucket NO is the smooth-P&L mechanism, and whether satellite/radar/lightning/RTMA/text information adds incremental edge after real source and execution latency.
