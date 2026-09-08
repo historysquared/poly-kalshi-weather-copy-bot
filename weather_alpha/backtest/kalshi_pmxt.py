@@ -85,9 +85,25 @@ class ReconstructedKalshiBook:
         complement = self.no_bids if side == "yes" else self.yes_bids
         bids = tuple(OrderLevel(float(p), float(q)) for p, q in bids_raw)
         asks = tuple(OrderLevel(float(Decimal("1") - p), float(q)) for p, q in complement)
-        return HistoricalOrderBook(self.market_ticker, side, self.effective_timestamp, bids, asks,
-                                   source_metadata={"market_id": self.market_id, "timestamp_received": self.received_timestamp.isoformat(),
-                                                    "exchange_timestamp": self.exchange_timestamp.isoformat() if self.exchange_timestamp else None})
+        clock = "exchange" if self.exchange_timestamp is not None else "received_fallback"
+        return HistoricalOrderBook(
+            self.market_ticker,
+            side,
+            self.effective_timestamp,
+            bids,
+            tuple(sorted(asks, key=lambda level: level.price)),
+            source_metadata={
+                "market_id": self.market_id,
+                "timestamp_received": self.received_timestamp.isoformat(),
+                "exchange_timestamp": self.exchange_timestamp.isoformat() if self.exchange_timestamp else None,
+                "clock": clock,
+            },
+        )
+
+
+def reconstruct_outcome_book(book: ReconstructedKalshiBook, outcome: str) -> HistoricalOrderBook:
+    """Compatibility helper used by tests/validation; delegates to the book method."""
+    return book.outcome_book(outcome)
 
 
 def _utc(dt: datetime) -> datetime:
@@ -140,7 +156,6 @@ def _decimal(value: object | None) -> Decimal | None:
 
 
 def _field(item: dict, *keys: object) -> object | None:
-    """Read Arrow struct fields robustly; PMXT uses numeric field names 1/2."""
     for key in keys:
         if key in item: return item[key]
         text=str(key)
@@ -163,7 +178,6 @@ def _raw_levels(values: object | None) -> tuple[tuple[Decimal, Decimal], ...]:
 
 
 def _row_field(row: dict, name: str, position: int) -> object | None:
-    """Arrow may expose this archive's top-level fields by numeric ids in some versions."""
     if name in row: return row[name]
     if position in row: return row[position]
     if str(position) in row: return row[str(position)]
@@ -220,9 +234,16 @@ def iter_market_snapshots(events: Iterable[RawKalshiEvent], *, ticker: str|None=
             tuple(sorted(yes.items(),reverse=True)),tuple(sorted(no.items(),reverse=True)))
 
 
-def nearest_book_at_or_before(events: Iterable[RawKalshiEvent], ticker: str, at: datetime) -> ReconstructedKalshiBook|None:
-    cutoff=_utc(at); nearest=None
-    for book in iter_market_snapshots(events,ticker=ticker):
+def nearest_book_at_or_before(events: Iterable[RawKalshiEvent] | Iterable[ReconstructedKalshiBook], ticker: str, at: datetime) -> ReconstructedKalshiBook|None:
+    cutoff=_utc(at)
+    items=list(events)
+    if not items: return None
+    if isinstance(items[0], ReconstructedKalshiBook):
+        books=(book for book in items if book.market_ticker==ticker)
+    else:
+        books=iter_market_snapshots(items, ticker=ticker)
+    nearest=None
+    for book in books:
         if book.effective_timestamp<=cutoff: nearest=book
         else: break
     return nearest
