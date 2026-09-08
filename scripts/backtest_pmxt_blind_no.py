@@ -12,13 +12,21 @@ from weather_alpha.backtest.pmxt import BookState, iter_events
 from weather_alpha.backtest.polymarket_manifest import load_manifest
 from weather_alpha.backtest.validation import EventReturn, rank_results, validate_strategy
 
-SITE_RE = re.compile(r"(?:site=|station[^A-Za-z0-9]+)([a-zA-Z]{3,5})", re.I)
+# Prefer explicit station identifiers embedded in the actual settlement-source URL
+# or rules. Avoid generic `station ...` text: it produced false IDs such as AVAIL.
+SITE_PARAM_RE = re.compile(r"(?:[?&](?:site|station)=)([A-Z0-9]{4,5})(?:&|$)", re.I)
+WU_PATH_RE = re.compile(r"wunderground\.com/history/daily/[^\s)]+/([A-Z0-9]{4,5})(?:[\s).]|$)", re.I)
+ICAO_RULE_RE = re.compile(r"\b(?:airport|weather|asos)\s+station\s+(?:at\s+)?\(?([A-Z][A-Z0-9]{3})\)?\b", re.I)
 
 
 def station_from_market(m) -> str:
-    text = " ".join(x for x in (m.resolution_source, m.description, m.question) if x)
-    found = SITE_RE.search(text)
-    return found.group(1).upper() if found else "UNKNOWN"
+    fields = [x for x in (m.resolution_source, m.description, m.question) if x]
+    text = "\n".join(fields)
+    for regex in (SITE_PARAM_RE, WU_PATH_RE, ICAO_RULE_RE):
+        found = regex.search(text)
+        if found:
+            return found.group(1).upper()
+    return "UNKNOWN"
 
 
 def main() -> None:
@@ -29,6 +37,7 @@ def main() -> None:
     p.add_argument("--min-no-cents", default="80,85,90,92,94,95,96,97,98")
     p.add_argument("--latencies", default="0,30,60,120,300,600,900")
     p.add_argument("--max-entry", type=float, default=0.995)
+    p.add_argument("--region", choices=["us", "all"], default="us")
     p.add_argument("--min-events", type=int, default=1, help="Use 30+ for promotion; smoke runs may use 1")
     p.add_argument("--min-stations", type=int, default=1, help="Use 2+ for promotion; smoke runs may use 1")
     args = p.parse_args()
@@ -37,6 +46,9 @@ def main() -> None:
     resolved = [m for m in manifest if m.resolved_yes is not None]
     market_by_token = {}
     for m in resolved:
+        station = station_from_market(m)
+        if args.region == "us" and not (len(station) == 4 and station.startswith("K")):
+            continue
         token = m.token_by_outcome.get("No") or m.token_by_outcome.get("NO")
         if token:
             market_by_token[token] = m
@@ -45,7 +57,7 @@ def main() -> None:
     if not paths:
         raise SystemExit(f"no compact pmxt parquet under {args.cache}")
     if not market_by_token:
-        raise SystemExit("manifest has no unambiguously resolved binary weather markets")
+        raise SystemExit("manifest has no matching unambiguously resolved binary weather markets")
 
     thresholds = [int(x) / 100 for x in args.min_no_cents.split(",") if x.strip()]
     latencies = [int(x) for x in args.latencies.split(",") if x.strip()]
@@ -53,9 +65,8 @@ def main() -> None:
     raw_trades: list[dict] = []
 
     # pmxt is physically sorted by (market, asset_id, timestamp_received), not
-    # globally by timestamp. That is ideal here: process each NO token's contiguous
-    # chronological run independently. This avoids both a false cross-asset clock
-    # and the quadratic pending-order loop used by the first smoke implementation.
+    # globally by timestamp. Process each NO token's contiguous chronological run
+    # independently; this is both time-correct and linear in the selected rows.
     current_token = None
     state = BookState.empty()
     trigger_at: dict[float, object] = {}
@@ -105,7 +116,7 @@ def main() -> None:
                     date=(m.end_date or str(now.date()))[:10],
                     station=station_from_market(m),
                     latency_seconds=latency,
-                    execution_case="pmxt_best_ask_1share",
+                    execution_case=f"pmxt_global_best_ask_1share_{args.region}",
                     pnl=pnl,
                     capital=all_in,
                 )
@@ -120,6 +131,7 @@ def main() -> None:
                     "entry_price": current,
                     "fee_reserved": fee,
                     "resolved_yes": m.resolved_yes,
+                    "source_venue": "polymarket_global_pmxt_v2",
                 })
                 filled.add(fill_key)
 
@@ -146,7 +158,7 @@ def main() -> None:
                 d["verdict"] = r.verdict.value
                 w.writerow(d)
 
-    print(f"resolved_markets={len(resolved)} resolved_no_tokens={len(market_by_token)}")
+    print(f"resolved_markets={len(resolved)} selected_no_tokens={len(market_by_token)} region={args.region}")
     print(f"pmxt_files={len(paths)} fills={len(returns)}")
     for r in ranked[:20]:
         print(
