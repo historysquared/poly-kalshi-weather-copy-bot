@@ -4,7 +4,7 @@ import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Optional
 
 import httpx
 
@@ -63,6 +63,13 @@ def _to_ms(dt: datetime) -> int:
     return int(_utc(dt).timestamp() * 1000)
 
 
+def _outcome(value: str) -> str:
+    side = value.lower()
+    if side not in {"yes", "no"}:
+        raise ValueError("outcome must be 'yes' or 'no'")
+    return side
+
+
 def _parse_timestamp(row: dict) -> datetime:
     ts = row.get("timestamp")
     if ts is not None:
@@ -98,9 +105,7 @@ def _parse_levels(values: object) -> tuple[OrderLevel, ...]:
 
 
 def parse_order_book(ticker: str, outcome: str, row: dict) -> HistoricalOrderBook:
-    side = outcome.lower()
-    if side not in {"yes", "no"}:
-        raise ValueError("outcome must be 'yes' or 'no'")
+    side = _outcome(outcome)
     return HistoricalOrderBook(
         ticker=ticker,
         outcome=side,
@@ -141,9 +146,10 @@ class PmxtKalshiHistoricalClient:
         return payload.get("data", payload)
 
     def snapshot(self, ticker: str, *, at: datetime, outcome: str = "yes") -> HistoricalOrderBook:
+        side = _outcome(outcome)
         params = {
             "outcomeId": ticker,
-            "outcome": outcome.lower(),
+            "outcome": side,
             "since": _to_ms(at),
         }
         with httpx.Client(timeout=self.timeout_s, follow_redirects=True) as client:
@@ -152,7 +158,7 @@ class PmxtKalshiHistoricalClient:
             data = self._unwrap(r.json())
         if not isinstance(data, dict):
             raise ValueError("PMXT snapshot response was not an order-book object")
-        book = parse_order_book(ticker, outcome, data)
+        book = parse_order_book(ticker, side, data)
         # No-lookahead guard: PMXT says a single historical snapshot is the
         # nearest reconstructed snapshot at or before `since`.
         if book.timestamp > _utc(at):
@@ -168,13 +174,14 @@ class PmxtKalshiHistoricalClient:
         outcome: str = "yes",
         limit: int = 1000,
     ) -> list[HistoricalOrderBook]:
+        side = _outcome(outcome)
         if _utc(end) <= _utc(start):
             raise ValueError("end must be after start")
         if not 1 <= int(limit) <= 1000:
             raise ValueError("PMXT historical range limit must be 1..1000")
         params = {
             "outcomeId": ticker,
-            "outcome": outcome.lower(),
+            "outcome": side,
             "since": _to_ms(start),
             "until": _to_ms(end),
             "limit": int(limit),
@@ -185,7 +192,7 @@ class PmxtKalshiHistoricalClient:
             data = self._unwrap(r.json())
         if not isinstance(data, list):
             raise ValueError("PMXT range response was not a list of reconstructed books")
-        books = [parse_order_book(ticker, outcome, row) for row in data]
+        books = [parse_order_book(ticker, side, row) for row in data]
         lower, upper = _utc(start), _utc(end)
         for book in books:
             if not (lower <= book.timestamp <= upper):
