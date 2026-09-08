@@ -1,3 +1,5 @@
+import pytest
+
 from weather_alpha.backtest.tournament import (
     ContractSnapshot, adjacent_yes_basket, blind_no, late_elimination_no, model_no, summarize
 )
@@ -13,7 +15,8 @@ def snap(**kw):
 
 def test_blind_no_can_have_bad_ev_despite_high_win_rate():
     t = blind_no(snap(no_ask=0.95), min_no_price=0.90, max_no_price=0.99)
-    assert t is not None and t.pnl_per_share == 0.05
+    assert t is not None
+    assert t.pnl_per_share == pytest.approx(0.05)
 
 
 def test_model_no_requires_edge():
