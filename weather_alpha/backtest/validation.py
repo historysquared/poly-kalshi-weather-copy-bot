@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from math import sqrt
 from random import Random
 from statistics import mean
 from typing import Iterable, Sequence
@@ -35,6 +34,7 @@ class EventReturn:
 class ValidationResult:
     strategy: str
     events: int
+    dates: int
     stations: int
     net_pnl: float
     mean_event_roi: float
@@ -76,13 +76,28 @@ def bootstrap_mean_ci(values: Sequence[float], *, samples: int = 4000, seed: int
         return values[0], values[0]
     rng = Random(seed)
     n = len(values)
-    means = []
-    for _ in range(samples):
-        means.append(mean(values[rng.randrange(n)] for _ in range(n)))
+    means = [mean(values[rng.randrange(n)] for _ in range(n)) for _ in range(samples)]
     means.sort()
     lo = means[max(0, int((alpha / 2) * samples))]
     hi = means[min(samples - 1, int((1 - alpha / 2) * samples) - 1)]
     return float(lo), float(hi)
+
+
+def date_block_bootstrap_ci(events: Sequence[EventReturn], *, samples: int = 4000, seed: int = 11,
+                            alpha: float = 0.05) -> tuple[float, float]:
+    """Bootstrap settlement-date blocks so same-day city outcomes stay correlated."""
+    blocks: dict[str, list[EventReturn]] = {}
+    for r in events:
+        blocks.setdefault(r.date, []).append(r)
+    dates = sorted(blocks)
+    if not dates:
+        return 0.0, 0.0
+    date_rois = []
+    for d in dates:
+        cap = sum(r.capital for r in blocks[d])
+        pnl = sum(r.pnl for r in blocks[d])
+        date_rois.append(pnl / cap if cap > 0 else 0.0)
+    return bootstrap_mean_ci(date_rois, samples=samples, seed=seed, alpha=alpha)
 
 
 def max_drawdown(rows: Sequence[EventReturn]) -> float:
@@ -99,43 +114,46 @@ def validate_strategy(
     rows: Iterable[EventReturn],
     *,
     min_events: int = 30,
+    min_dates: int = 20,
     min_stations: int = 2,
     require_positive_ci_for_keep: bool = True,
 ) -> ValidationResult:
     events = _event_aggregate(rows)
     if not events:
-        return ValidationResult("unknown", 0, 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, "unknown",
+        return ValidationResult("unknown", 0, 0, 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0, "unknown",
                                 Verdict.INSUFFICIENT_DATA, "no resolved event-level returns")
     strategy = events[0].strategy
     latency = events[0].latency_seconds
     case = events[0].execution_case
     rois = [r.roi for r in events if r.capital > 0]
-    ci_lo, ci_hi = bootstrap_mean_ci(rois)
+    ci_lo, ci_hi = date_block_bootstrap_ci(events)
     net = sum(r.pnl for r in events)
     avg = mean(rois) if rois else 0.0
     win_rate = sum(r.pnl > 0 for r in events) / len(events)
-    stations = len({r.station for r in events if r.station})
+    stations = len({r.station for r in events if r.station and r.station != "UNKNOWN"})
+    dates = len({r.date for r in events})
     dd = max_drawdown(events)
 
-    if len(events) < min_events or stations < min_stations:
+    if len(events) < min_events or dates < min_dates or stations < min_stations:
         verdict = Verdict.INSUFFICIENT_DATA
-        reason = f"need >= {min_events} independent events and >= {min_stations} stations"
+        reason = f"need >= {min_events} events, >= {min_dates} settlement dates, >= {min_stations} stations"
     elif net <= 0 or avg <= 0:
         verdict = Verdict.KILL
         reason = "negative out-of-sample economics after realistic execution"
     elif ci_hi <= 0:
         verdict = Verdict.KILL
-        reason = "95% event-bootstrap ROI interval is entirely non-positive"
+        reason = "95% settlement-date block-bootstrap ROI interval is entirely non-positive"
     elif require_positive_ci_for_keep and ci_lo <= 0:
         verdict = Verdict.PROVISIONAL
-        reason = "positive point estimate but 95% event-bootstrap ROI interval crosses zero"
+        reason = "positive point estimate but date-block 95% ROI interval crosses zero"
     else:
         verdict = Verdict.KEEP
-        reason = "positive OOS economics with positive event-bootstrap lower bound"
+        reason = "positive OOS economics with positive date-block bootstrap lower bound"
 
     return ValidationResult(
         strategy=strategy,
         events=len(events),
+        dates=dates,
         stations=stations,
         net_pnl=float(net),
         mean_event_roi=float(avg),
