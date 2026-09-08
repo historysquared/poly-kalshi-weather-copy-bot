@@ -27,10 +27,18 @@ class PolymarketWeatherMarket:
     outcomes: tuple[str, ...]
     token_ids: tuple[str, ...]
     description: Optional[str]
+    outcome_prices: tuple[float, ...] = ()
+    resolved_outcome: Optional[str] = None
 
     @property
     def token_by_outcome(self) -> dict[str, str]:
         return dict(zip(self.outcomes, self.token_ids, strict=False))
+
+    @property
+    def resolved_yes(self) -> Optional[bool]:
+        if self.resolved_outcome is None:
+            return None
+        return self.resolved_outcome.strip().lower() == "yes"
 
 
 def _json_array(value: Any) -> list[str]:
@@ -47,6 +55,31 @@ def _json_array(value: Any) -> list[str]:
     return []
 
 
+def _outcome_prices(value: Any) -> tuple[float, ...]:
+    out: list[float] = []
+    for x in _json_array(value):
+        try:
+            out.append(float(x))
+        except (TypeError, ValueError):
+            return ()
+    return tuple(out)
+
+
+def _resolved_outcome(outcomes: tuple[str, ...], prices: tuple[float, ...], closed: bool) -> Optional[str]:
+    """Infer terminal binary outcome only from an unambiguous Gamma terminal vector.
+
+    We intentionally do not use a merely high market price as resolution. A closed
+    market must have exactly one outcome at ~1 and all others at ~0.
+    """
+    if not closed or not outcomes or len(outcomes) != len(prices):
+        return None
+    winners = [i for i, p in enumerate(prices) if p >= 0.999]
+    losers_ok = all(p <= 0.001 or i in winners for i, p in enumerate(prices))
+    if len(winners) != 1 or not losers_ok:
+        return None
+    return outcomes[winners[0]]
+
+
 def search_weather_markets(
     *,
     query: str = "highest temperature",
@@ -54,12 +87,7 @@ def search_weather_markets(
     limit_per_type: int = 50,
     timeout_s: float = 30.0,
 ) -> Iterator[PolymarketWeatherMarket]:
-    """Discover historical Polymarket weather markets through Gamma public search.
-
-    The pmxt archive only stores condition/token ids and orderbook events. This
-    metadata step supplies the human contract definition needed to decide which
-    archived assets are weather markets and how they resolved.
-    """
+    """Discover historical Polymarket weather markets through Gamma public search."""
     seen: set[str] = set()
     with httpx.Client(timeout=timeout_s, follow_redirects=True) as client:
         for page in range(1, max_pages + 1):
@@ -92,9 +120,10 @@ def search_weather_markets(
                         continue
                     question = str(market.get("question") or "")
                     combined = f"{event_title} {question}".lower()
-                    # Prevent broad search results from contaminating the weather set.
                     if "temperature" not in combined and "weather" not in combined:
                         continue
+                    closed = bool(market.get("closed"))
+                    prices = _outcome_prices(market.get("outcomePrices"))
                     seen.add(condition_id)
                     yield PolymarketWeatherMarket(
                         gamma_market_id=str(market.get("id") or ""),
@@ -106,11 +135,13 @@ def search_weather_markets(
                         question=question,
                         start_date=market.get("startDate") or event.get("startDate"),
                         end_date=market.get("endDate") or event.get("endDate"),
-                        closed=bool(market.get("closed")),
+                        closed=closed,
                         resolution_source=market.get("resolutionSource") or event.get("resolutionSource"),
                         outcomes=outcomes,
                         token_ids=tokens,
                         description=market.get("description") or event.get("description"),
+                        outcome_prices=prices,
+                        resolved_outcome=_resolved_outcome(outcomes, prices, closed),
                     )
             pagination = payload.get("pagination") or {}
             if not pagination.get("hasMore"):
@@ -125,6 +156,7 @@ def write_manifest(path: Path, markets: Iterator[PolymarketWeatherMarket]) -> in
             row = asdict(market)
             row["outcomes"] = list(market.outcomes)
             row["token_ids"] = list(market.token_ids)
+            row["outcome_prices"] = list(market.outcome_prices)
             handle.write(json.dumps(row, sort_keys=True) + "\n")
             count += 1
     return count
@@ -139,5 +171,7 @@ def load_manifest(path: Path) -> list[PolymarketWeatherMarket]:
             row = json.loads(line)
             row["outcomes"] = tuple(row.get("outcomes") or [])
             row["token_ids"] = tuple(row.get("token_ids") or [])
+            row["outcome_prices"] = tuple(float(x) for x in (row.get("outcome_prices") or []))
+            row.setdefault("resolved_outcome", None)
             rows.append(PolymarketWeatherMarket(**row))
     return rows
