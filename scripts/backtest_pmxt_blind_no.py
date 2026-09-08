@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import re
 from dataclasses import asdict
 from datetime import timedelta
 from pathlib import Path
@@ -11,25 +10,10 @@ from pathlib import Path
 from weather_alpha.backtest.pmxt import BookState, iter_events
 from weather_alpha.backtest.polymarket_manifest import load_manifest
 from weather_alpha.backtest.validation import EventReturn, rank_results, validate_strategy
-
-# Prefer explicit station identifiers embedded in the actual settlement-source URL
-# or rules. Avoid generic `station ...` text: it produced false IDs such as AVAIL.
-SITE_PARAM_RE = re.compile(r"(?:[?&](?:site|station)=)([A-Z0-9]{4,5})(?:&|$)", re.I)
-WU_PATH_RE = re.compile(r"wunderground\.com/history/daily/[^\s)]+/([A-Z0-9]{4,5})(?:[\s).]|$)", re.I)
-ICAO_RULE_RE = re.compile(r"\b(?:airport|weather|asos)\s+station\s+(?:at\s+)?\(?([A-Z][A-Z0-9]{3})\)?\b", re.I)
+from weather_alpha.backtest.weather_scope import is_us_icao, settlement_station
 
 
-def station_from_market(m) -> str:
-    fields = [x for x in (m.resolution_source, m.description, m.question) if x]
-    text = "\n".join(fields)
-    for regex in (SITE_PARAM_RE, WU_PATH_RE, ICAO_RULE_RE):
-        found = regex.search(text)
-        if found:
-            return found.group(1).upper()
-    return "UNKNOWN"
-
-
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Replay resolved weather NO markets from compact pmxt data")
     p.add_argument("--manifest", default="data/weather/metadata/polymarket_weather_markets.jsonl")
     p.add_argument("--cache", default="data/weather/pmxt_v2/weather_only")
@@ -38,16 +22,21 @@ def main() -> None:
     p.add_argument("--latencies", default="0,30,60,120,300,600,900")
     p.add_argument("--max-entry", type=float, default=0.995)
     p.add_argument("--region", choices=["us", "all"], default="us")
-    p.add_argument("--min-events", type=int, default=1, help="Use 30+ for promotion; smoke runs may use 1")
-    p.add_argument("--min-stations", type=int, default=1, help="Use 2+ for promotion; smoke runs may use 1")
-    args = p.parse_args()
+    p.add_argument("--min-events", type=int, default=30, help="Production gate; smoke runs may override to 1")
+    p.add_argument("--min-dates", type=int, default=20, help="Production settlement-date gate; smoke runs may override to 1")
+    p.add_argument("--min-stations", type=int, default=3, help="Production station gate; smoke runs may override to 1")
+    return p
+
+
+def main() -> None:
+    args = build_parser().parse_args()
 
     manifest = load_manifest(Path(args.manifest))
     resolved = [m for m in manifest if m.resolved_yes is not None]
     market_by_token = {}
     for m in resolved:
-        station = station_from_market(m)
-        if args.region == "us" and not (len(station) == 4 and station.startswith("K")):
+        station = settlement_station(m)
+        if args.region == "us" and not is_us_icao(station):
             continue
         token = m.token_by_outcome.get("No") or m.token_by_outcome.get("NO")
         if token:
@@ -114,7 +103,7 @@ def main() -> None:
                     strategy=strategy,
                     event_id=m.event_id or m.event_slug,
                     date=(m.end_date or str(now.date()))[:10],
-                    station=station_from_market(m),
+                    station=settlement_station(m),
                     latency_seconds=latency,
                     execution_case=f"pmxt_global_best_ask_1share_{args.region}",
                     pnl=pnl,
@@ -145,7 +134,14 @@ def main() -> None:
     keys = sorted({(r.strategy, r.latency_seconds, r.execution_case) for r in returns})
     for strategy, latency, case in keys:
         subset = [r for r in returns if r.strategy == strategy and r.latency_seconds == latency and r.execution_case == case]
-        results.append(validate_strategy(subset, min_events=args.min_events, min_stations=args.min_stations))
+        results.append(
+            validate_strategy(
+                subset,
+                min_events=args.min_events,
+                min_dates=args.min_dates,
+                min_stations=args.min_stations,
+            )
+        )
     ranked = rank_results(results)
 
     fields = list(asdict(ranked[0]).keys()) if ranked else []
@@ -163,7 +159,7 @@ def main() -> None:
     for r in ranked[:20]:
         print(
             f"{r.verdict.value:18s} {r.strategy:22s} latency={r.latency_seconds:4d}s "
-            f"events={r.events:3d} pnl={r.net_pnl:+.4f} mean_roi={r.mean_event_roi:+.3%} "
+            f"events={r.events:3d} dates={r.dates:3d} pnl={r.net_pnl:+.4f} mean_roi={r.mean_event_roi:+.3%} "
             f"ci=[{r.roi_ci_low:+.3%},{r.roi_ci_high:+.3%}]"
         )
 
