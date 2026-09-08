@@ -44,11 +44,19 @@ jobs:
           if total == 0:
               raise SystemExit('no weather rows found in pmxt smoke window')
           PY
-      - name: Archive smoke inputs
+      - name: Replay blind NO latency grid
+        run: |
+          python scripts/backtest_pmxt_blind_no.py \
+            --min-events 1 \
+            --min-stations 1
+          echo '--- ranking ---'
+          cat research/results/pmxt_blind_no/ranking.csv
+      - name: Archive smoke inputs and results
         uses: actions/upload-artifact@v4
         with:
           name: weather-historical-smoke
           path: |
             data/weather/metadata/polymarket_weather_markets.jsonl
             data/weather/pmxt_v2/weather_only/*.parquet
+            research/results/pmxt_blind_no/*
           retention-days: 7
