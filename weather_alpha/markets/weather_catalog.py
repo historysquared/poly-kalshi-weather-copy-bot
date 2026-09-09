@@ -51,16 +51,18 @@ class WeatherCatalogRecord:
         return f"{self.station}_{self.settlement_date.isoformat()}_{self.measurement.value}"
 
 
-_WEATHER_TERMS = re.compile(
-    r"\b(?:temperature|temp|daily high|daily low|high temperature|low temperature|rain|rainfall|precipitation|snow|snowfall|weather)\b",
-    re.I,
+# These are domain phrases, not generic English words. In particular, bare
+# "high"/"low" are deliberately excluded: CPI can be high and a hurricane can
+# be named Lowell without either being a temperature contract.
+_TEMP_TERMS = re.compile(
+    r"(?:\btemperature\b|\btemp\b|°\s*[FC]\b|\bdegrees?\s+(?:fahrenheit|celsius|[FC])\b|"
+    r"\bdaily\s+(?:high|low)\b|\b(?:high|low)\s+temperature\b)", re.I,
 )
-# Candidate discovery only. It is intentionally recall-oriented. Final inclusion
-# still requires official metadata classification below.
-_TICKER_HINT = re.compile(
-    r"(?:^(?:KX)?(?:HIGH|LOW|TEMP|RAIN|SNOW|WEATHER|WX)|(?:^|[-_])(?:HIGH|LOW|TEMP|RAIN|SNOW|WEATHER|WX)(?:[-_]|$))",
-    re.I,
-)
+_PRECIP_TERMS = re.compile(r"\b(?:rainfall|precipitation|snowfall)\b", re.I)
+# Known Kalshi meteorological families. KXHIGH* is used by current daily-high
+# temperature markets; keep additional explicit WX/TEMP/RAIN/SNOW prefixes for
+# discovery, but never infer a measure from a person's/storm's name.
+_KALSHI_WEATHER_SERIES = re.compile(r"^(?:KXHIGH[A-Z]*|KXLOW[A-Z]*|KXTEMP[A-Z]*|KXRAIN[A-Z]*|KXSNOW[A-Z]*|KXWX[A-Z]*)$", re.I)
 _STATION = re.compile(r"\bK[A-Z]{3}\b")
 _NWS_SOURCE = re.compile(r"(?:National Weather Service|\bNWS\b|Climatological Report|Daily Climate Report|CLI)", re.I)
 _DATE = re.compile(r"\b(20\d{2})[-/](\d{1,2})[-/](\d{1,2})\b")
@@ -73,22 +75,32 @@ def _text(meta: dict[str, Any]) -> str:
     )
 
 
+def _series_ticker(meta: dict[str, Any]) -> str:
+    value = str(meta.get("series_ticker") or "").strip()
+    if value:
+        return value
+    event = str(meta.get("event_ticker") or "").strip()
+    return event.split("-", 1)[0] if event else ""
+
+
 def looks_weather_like(meta: dict[str, Any]) -> bool:
     text = _text(meta)
-    return bool(_WEATHER_TERMS.search(text) or _TICKER_HINT.search(str(meta.get("ticker") or "")))
+    series = _series_ticker(meta)
+    return bool(_KALSHI_WEATHER_SERIES.fullmatch(series) or _TEMP_TERMS.search(text) or _PRECIP_TERMS.search(text))
 
 
 def infer_measurement(meta: dict[str, Any]) -> WeatherMeasure:
     text = _text(meta).lower()
-    if "daily high" in text or "high temperature" in text or re.search(r"\bhigh\b", text):
+    series = _series_ticker(meta).upper()
+    if series.startswith("KXHIGH") or "daily high" in text or "high temperature" in text:
         return WeatherMeasure.DAILY_HIGH
-    if "daily low" in text or "low temperature" in text or re.search(r"\blow\b", text):
+    if series.startswith("KXLOW") or "daily low" in text or "low temperature" in text:
         return WeatherMeasure.DAILY_LOW
-    if "snow" in text:
+    if series.startswith("KXSNOW") or "snowfall" in text:
         return WeatherMeasure.SNOW
-    if "rain" in text or "precip" in text:
+    if series.startswith("KXRAIN") or "rainfall" in text or "precipitation" in text:
         return WeatherMeasure.RAIN
-    if "temperature" in text or "temp" in text:
+    if series.startswith("KXTEMP") or _TEMP_TERMS.search(text):
         return WeatherMeasure.TEMPERATURE
     return WeatherMeasure.OTHER
 
@@ -145,9 +157,14 @@ def classify_kalshi_market(meta: dict[str, Any]) -> WeatherCatalogRecord:
     if not looks_weather_like(meta):
         return WeatherCatalogRecord("kalshi", ticker, event_ticker, CatalogStatus.REJECT, WeatherMeasure.OTHER,
                                     None, None, None, None, None, None, title, subtitle, None,
-                                    ("no weather evidence",), meta)
+                                    ("no explicit meteorological evidence",), meta)
 
     measure = infer_measurement(meta)
+    if measure == WeatherMeasure.OTHER:
+        return WeatherCatalogRecord("kalshi", ticker, event_ticker, CatalogStatus.REJECT, measure,
+                                    None, None, None, None, None, None, title, subtitle, None,
+                                    ("weather-like candidate has no supported measurement",), meta)
+
     station = explicit_station(meta)
     settle_date = explicit_settlement_date(meta)
     shape, lower, upper = infer_shape(meta)
