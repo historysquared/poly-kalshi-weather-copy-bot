@@ -102,7 +102,6 @@ class ReconstructedKalshiBook:
 
 
 def reconstruct_outcome_book(book: ReconstructedKalshiBook, outcome: str) -> HistoricalOrderBook:
-    """Compatibility helper used by tests/validation; delegates to the book method."""
     return book.outcome_book(outcome)
 
 
@@ -191,8 +190,10 @@ def parse_kalshi_parquet_row(row: dict) -> RawKalshiEvent:
     ticker=str(_row_field(row,"market_ticker",2) or "")
     market_id=str(_row_field(row,"market_id",3) or "")
     event_type=str(_row_field(row,"event_type",4) or "")
-    if not ticker or not market_id or not event_type:
-        raise ValueError(f"raw PMXT Kalshi row missing market_ticker/market_id/event_type; keys={list(row)[:12]}")
+    # Real PMXT archives contain valid snapshot rows with an empty market_id.
+    # Ticker is the stable replay key; preserve market_id exactly rather than inventing one.
+    if not ticker or not event_type:
+        raise ValueError(f"raw PMXT Kalshi row missing market_ticker/event_type; keys={list(row)[:12]}")
     return RawKalshiEvent(received,exchange,exchange or received,ticker,market_id,event_type,
         _raw_levels(_row_field(row,"yes_bids",5)),_raw_levels(_row_field(row,"no_bids",6)),
         _decimal(_row_field(row,"price",7)),_decimal(_row_field(row,"delta",8)),
