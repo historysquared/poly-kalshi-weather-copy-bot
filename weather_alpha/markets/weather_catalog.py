@@ -55,7 +55,12 @@ _WEATHER_TERMS = re.compile(
     r"\b(?:temperature|temp|daily high|daily low|high temperature|low temperature|rain|rainfall|precipitation|snow|snowfall|weather)\b",
     re.I,
 )
-_TICKER_HINT = re.compile(r"(?:^|[-_])(?:HIGH|LOW|TEMP|RAIN|SNOW|WX)(?:[-_]|$)", re.I)
+# Candidate discovery only. It is intentionally recall-oriented. Final inclusion
+# still requires official metadata classification below.
+_TICKER_HINT = re.compile(
+    r"(?:^(?:KX)?(?:HIGH|LOW|TEMP|RAIN|SNOW|WEATHER|WX)|(?:^|[-_])(?:HIGH|LOW|TEMP|RAIN|SNOW|WEATHER|WX)(?:[-_]|$))",
+    re.I,
+)
 _STATION = re.compile(r"\bK[A-Z]{3}\b")
 _NWS_SOURCE = re.compile(r"(?:National Weather Service|\bNWS\b|Climatological Report|Daily Climate Report|CLI)", re.I)
 _DATE = re.compile(r"\b(20\d{2})[-/](\d{1,2})[-/](\d{1,2})\b")
