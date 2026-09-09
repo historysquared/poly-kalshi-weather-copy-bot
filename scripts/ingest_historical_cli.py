@@ -4,11 +4,62 @@ import argparse
 import json
 from collections import Counter
 from pathlib import Path
+from typing import Any
 
 import pyarrow as pa
 import pyarrow.parquet as pq
 
 from weather_alpha.settlement.cli_archive import IemCliArchive
+
+
+# Keep raw CLI JSONL lossless/auditable, but make the normalized Parquet schema
+# deterministic. IEM/NWS uses markers such as M for missing and T for trace;
+# mixed strings/numbers in nested raw payloads otherwise make Arrow infer an
+# unstable numeric type and fail when a later row contains M.
+
+def _clean_scalar(value: Any) -> Any:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        text = value.strip()
+        if text.upper() in {"", "M", "MM", "NULL", "NONE", "NAN"}:
+            return None
+        return text
+    return value
+
+
+def _normalized_row(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "station": str(row.get("station") or "").upper(),
+        "valid_date": str(row.get("valid_date") or "")[:10],
+        "high_f": row.get("high_f"),
+        "low_f": row.get("low_f"),
+        "precip_in": row.get("precip_in"),
+        "snow_in": row.get("snow_in"),
+        "high_time_lst": _clean_scalar(row.get("high_time_lst")),
+        "low_time_lst": _clean_scalar(row.get("low_time_lst")),
+        "source": str(row.get("source") or "NWS_CLI_VIA_IEM"),
+        # Preserve the source row as JSON rather than a nested inferred Arrow
+        # struct. This retains M/T/product/link/WFO metadata without allowing
+        # heterogeneous source types to corrupt the normalized table schema.
+        "raw_json": json.dumps(row.get("raw") or {}, sort_keys=True, default=str),
+    }
+
+
+def _table(rows: list[dict[str, Any]]) -> pa.Table:
+    schema = pa.schema([
+        ("station", pa.string()),
+        ("valid_date", pa.string()),
+        ("high_f", pa.float64()),
+        ("low_f", pa.float64()),
+        ("precip_in", pa.float64()),
+        ("snow_in", pa.float64()),
+        ("high_time_lst", pa.string()),
+        ("low_time_lst", pa.string()),
+        ("source", pa.string()),
+        ("raw_json", pa.string()),
+    ])
+    return pa.Table.from_pylist(rows, schema=schema)
 
 
 def main() -> int:
@@ -36,7 +87,7 @@ def main() -> int:
     args.raw_dir.mkdir(parents=True, exist_ok=True)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     archive = IemCliArchive()
-    all_rows: list[dict] = []
+    all_rows: list[dict[str, Any]] = []
     counts: Counter[str] = Counter()
     for station in sorted(targets):
         for year in sorted(targets[station]):
@@ -44,15 +95,17 @@ def main() -> int:
             raw_path = args.raw_dir / f"{station}_{year}.jsonl"
             with raw_path.open("w", encoding="utf-8") as handle:
                 for record in records:
-                    handle.write(json.dumps(record.to_dict(), sort_keys=True, default=str) + "\n")
-                    all_rows.append(record.to_dict())
+                    raw = record.to_dict()
+                    # Raw archive remains lossless for settlement audits.
+                    handle.write(json.dumps(raw, sort_keys=True, default=str) + "\n")
+                    all_rows.append(_normalized_row(raw))
             counts[station] += len(records)
             print(f"station={station} year={year} cli_records={len(records)} raw={raw_path}")
 
     # Deduplicate because multiple contracts/buckets share one physical station-day.
     unique = {(r["station"], r["valid_date"]): r for r in all_rows}
     rows = [unique[k] for k in sorted(unique)]
-    pq.write_table(pa.Table.from_pylist(rows) if rows else pa.table({"station": pa.array([], type=pa.string())}), args.output)
+    pq.write_table(_table(rows), args.output)
     observed = {(r["station"], r["valid_date"]) for r in rows}
     missing = sorted(target_dates - observed)
     print(f"stations={len(targets)} rows={len(rows)} target_station_dates={len(target_dates)} missing_target_dates={len(missing)}")
