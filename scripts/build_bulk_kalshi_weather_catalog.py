@@ -84,7 +84,9 @@ def main() -> int:
                 cursor = ""
                 pages = 0
                 while True:
-                    params: dict[str, Any] = {"limit":1000, "series_ticker":series, "mve_filter":"exclude"}
+                    # Kalshi historical-market filters are mutually exclusive.
+                    # In particular, series_ticker cannot be combined with mve_filter.
+                    params: dict[str, Any] = {"limit":1000, "series_ticker":series}
                     if cursor:
                         params["cursor"] = cursor
                     payload = get_json(client, "/historical/markets", params)
