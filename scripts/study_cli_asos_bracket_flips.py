@@ -11,7 +11,7 @@ from typing import Any
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from weather_alpha.providers.surface import IemAsosOneMinuteArchive
+from weather_alpha.providers.surface import IemAsosOneMinuteArchive, SurfaceFetchError
 from weather_alpha.quality.asos_qc import assess_asos_temperature_quality
 from weather_alpha.settlement.bracket_study import evaluate_contract_flip
 from weather_alpha.settlement.reconstruction import local_standard_settlement_window, reconstruct_daily_extreme
@@ -69,9 +69,13 @@ async def run(args: argparse.Namespace) -> int:
         fetch_end = window.end_utc + timedelta(minutes=args.buffer_minutes)
         try:
             observations = await archive.fetch([station], fetch_start, fetch_end)
+        except SurfaceFetchError as exc:
+            errors.append(f"{station} {day_text}: {exc.status.value}: {exc}")
+            print(f"fetch_error station={station} date={day_text} status={exc.status.value} http_status={exc.status_code} error={exc}")
+            continue
         except Exception as exc:
             errors.append(f"{station} {day_text}: {type(exc).__name__}: {exc}")
-            print(f"fetch_error station={station} date={day_text} error={exc}")
+            print(f"fetch_error station={station} date={day_text} status=UNEXPECTED error={exc}")
             continue
 
         raw_path = args.raw_dir / f"{station}_{day_text}.jsonl"
@@ -88,9 +92,6 @@ async def run(args: argparse.Namespace) -> int:
         kind = "high" if measurement == "DAILY_HIGH" else "low"
         recon = reconstruct_daily_extreme(observations, clock=clock, settlement_date=day, official_extreme_f=official, kind=kind)
 
-        # IEM 1-minute ASOS is a processed high-resolution archive. It is NOT
-        # labeled as the public whole-C 5-minute feed; that separate inversion
-        # study belongs in the next layer.
         station_row = {
             "station": station,
             "settlement_date": day_text,
@@ -146,8 +147,12 @@ async def run(args: argparse.Namespace) -> int:
             f"qc={qc.status.value} contracts={len(contracts_by_event[(station, day_text, measurement)])}"
         )
 
-    pq.write_table(_safe_table(station_rows), args.station_output)
-    pq.write_table(_safe_table(contract_rows), args.contract_output)
+    # Fail closed: do not overwrite canonical research outputs when any required
+    # station-day failed. Partial artifacts are explicitly labeled partial.
+    station_path = args.station_output if not errors else args.station_output.with_name(args.station_output.stem + ".partial" + args.station_output.suffix)
+    contract_path = args.contract_output if not errors else args.contract_output.with_name(args.contract_output.stem + ".partial" + args.contract_output.suffix)
+    pq.write_table(_safe_table(station_rows), station_path)
+    pq.write_table(_safe_table(contract_rows), contract_path)
 
     residuals = [float(r["cli_minus_asos_1min_f"]) for r in station_rows if r.get("cli_minus_asos_1min_f") is not None]
     flips = [r for r in contract_rows if r.get("boundary_flip") is True]
@@ -161,13 +166,16 @@ async def run(args: argparse.Namespace) -> int:
         print("flip_contracts=" + repr([r["contract_id"] for r in flips[:25]]))
     if errors:
         print("errors_sample=" + repr(errors[:10]))
-    print(f"station_output={args.station_output}")
-    print(f"contract_output={args.contract_output}")
+        print("result_status=INCOMPLETE_DO_NOT_USE")
+    else:
+        print("result_status=COMPLETE")
+    print(f"station_output={station_path}")
+    print(f"contract_output={contract_path}")
     return 0 if not errors else 2
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Compare official NWS CLI extrema with causal IEM 1-minute ASOS and test Kalshi bracket flips")
+    p = argparse.ArgumentParser(description="Compare official NWS CLI extrema with causal IEM one-minute NCEI ASOS and test Kalshi bracket flips")
     p.add_argument("--catalog", type=Path, default=Path("/data/weather/normalized/markets/kalshi_weather_catalog_resolved.parquet"))
     p.add_argument("--cli", type=Path, default=Path("/data/weather/normalized/settlements/nws_cli_daily.parquet"))
     p.add_argument("--station-output", type=Path, default=Path("/data/weather/results/settlement_reconstruction/cli_asos_station_days.parquet"))
