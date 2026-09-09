@@ -24,7 +24,6 @@ def candidate_tickers(pmxt_path: Path) -> list[str]:
 
 
 def load_cached_metadata(path: Path) -> dict[str, dict[str, Any]]:
-    """Load prior successful responses so interrupted/rate-limited runs resume."""
     cached: dict[str, dict[str, Any]] = {}
     if not path.exists():
         return cached
@@ -40,34 +39,44 @@ def load_cached_metadata(path: Path) -> dict[str, dict[str, Any]]:
     return cached
 
 
-def fetch_market(
-    ticker: str,
-    client: httpx.Client,
-    *,
-    max_attempts: int = 8,
-    base_delay_s: float = 1.0,
-) -> dict[str, Any] | None:
-    """Fetch official metadata with bounded exponential backoff for 429/5xx."""
-    url = f"{KALSHI_BASE}/markets/{ticker}"
+def _get_with_retry(url: str, client: httpx.Client, ticker: str, *, max_attempts: int = 8, base_delay_s: float = 1.0) -> httpx.Response:
     for attempt in range(max_attempts):
         r = client.get(url)
+        if r.status_code not in {429} and not (500 <= r.status_code < 600):
+            return r
+        retry_after = r.headers.get("Retry-After")
+        try:
+            delay = float(retry_after) if retry_after else base_delay_s * (2 ** attempt)
+        except ValueError:
+            delay = base_delay_s * (2 ** attempt)
+        delay = min(delay, 60.0) + random.uniform(0.0, 0.25)
+        print(f"retry ticker={ticker} status={r.status_code} attempt={attempt+1}/{max_attempts} sleep={delay:.2f}s")
+        time.sleep(delay)
+    raise RuntimeError(f"Kalshi metadata retries exhausted for {ticker}")
+
+
+def fetch_market(ticker: str, client: httpx.Client) -> tuple[dict[str, Any] | None, str | None]:
+    """Fetch official metadata from the correct Kalshi storage tier.
+
+    Settled markets older than Kalshi's cutoff move out of `/markets` and into
+    `/historical/markets`. Because PMXT files are historical research inputs, try
+    the historical tier first, then fall back to the live/current tier.
+    """
+    for source, endpoint in (
+        ("historical", f"{KALSHI_BASE}/historical/markets/{ticker}"),
+        ("current", f"{KALSHI_BASE}/markets/{ticker}"),
+    ):
+        r = _get_with_retry(endpoint, client, ticker)
         if r.status_code == 404:
-            return None
-        if r.status_code == 429 or 500 <= r.status_code < 600:
-            retry_after = r.headers.get("Retry-After")
-            try:
-                delay = float(retry_after) if retry_after else base_delay_s * (2 ** attempt)
-            except ValueError:
-                delay = base_delay_s * (2 ** attempt)
-            delay = min(delay, 60.0) + random.uniform(0.0, 0.25)
-            print(f"retry ticker={ticker} status={r.status_code} attempt={attempt+1}/{max_attempts} sleep={delay:.2f}s")
-            time.sleep(delay)
             continue
         r.raise_for_status()
         payload = r.json()
         market = payload.get("market", payload)
-        return market if isinstance(market, dict) else None
-    raise RuntimeError(f"Kalshi metadata retries exhausted for {ticker}")
+        if isinstance(market, dict):
+            market = dict(market)
+            market["_metadata_source"] = source
+            return market, source
+    return None, None
 
 
 def catalog_row(market: dict[str, Any]) -> dict[str, Any] | None:
@@ -90,6 +99,7 @@ def catalog_row(market: dict[str, Any]) -> dict[str, Any] | None:
         "title": rec.title,
         "subtitle": rec.subtitle,
         "close_time": rec.close_time.isoformat() if rec.close_time else None,
+        "metadata_source": market.get("_metadata_source"),
         "reasons": list(rec.reasons),
     }
 
@@ -115,15 +125,15 @@ def main() -> int:
     rows: list[dict[str, Any]] = []
     missing = 0
     fetched = 0
+    source_counts: Counter[str] = Counter()
 
     with httpx.Client(timeout=20.0, follow_redirects=True, headers={"User-Agent": "weather-alpha-lab/0.1"}) as client, args.metadata_jsonl.open("a", encoding="utf-8") as raw:
         for i, ticker in enumerate(tickers, 1):
             market = cached.get(ticker)
             if market is None:
                 try:
-                    market = fetch_market(ticker, client)
+                    market, source = fetch_market(ticker, client)
                 except (httpx.HTTPError, RuntimeError) as exc:
-                    # Preserve progress. A later run will resume this ticker.
                     print(f"fetch_failed ticker={ticker} error={exc}")
                     continue
                 fetched += 1
@@ -131,10 +141,13 @@ def main() -> int:
                     missing += 1
                     time.sleep(args.request_delay)
                     continue
+                source_counts[source or "unknown"] += 1
                 raw.write(json.dumps(market, sort_keys=True, default=str) + "\n")
                 raw.flush()
                 cached[ticker] = market
                 time.sleep(args.request_delay)
+            else:
+                source_counts[str(market.get("_metadata_source") or "cached_legacy")] += 1
 
             row = catalog_row(market)
             if row is not None:
@@ -142,7 +155,6 @@ def main() -> int:
             if i % 50 == 0:
                 print(f"processed={i}/{len(tickers)} retained={len(rows)} cached={len(cached)} new_fetches={fetched} missing={missing}")
 
-    # Deterministic one-row-per-contract output even across resumed runs.
     by_contract = {row["contract_id"]: row for row in rows}
     rows = [by_contract[key] for key in sorted(by_contract)]
     table = pa.Table.from_pylist(rows) if rows else pa.table({"contract_id": pa.array([], type=pa.string())})
@@ -151,6 +163,7 @@ def main() -> int:
     print(f"official_metadata_missing={missing}")
     print(f"new_fetches={fetched}")
     print(f"cached_metadata={len(cached)}")
+    print(f"metadata_source_counts={dict(source_counts)}")
     print(f"retained={len(rows)}")
     print(f"status_counts={dict(counts)}")
     print(f"output={args.output}")
