@@ -4,6 +4,7 @@ import csv
 import io
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from enum import StrEnum
 from typing import Iterable
 
 import httpx
@@ -22,14 +23,30 @@ class SurfaceObservation:
     received_time: datetime | None = None
 
 
-class IemAsosOneMinuteArchive:
-    """Historical one-minute ASOS adapter for backtesting.
+class SurfaceFetchStatus(StrEnum):
+    OK = "OK"
+    NO_DATA = "NO_DATA"
+    API_ERROR = "API_ERROR"
 
-    IEM documents this dataset as a processed NCEI/MADIS archive with limited QC.
-    It is therefore a feature source, not the settlement authority.
+
+class SurfaceFetchError(RuntimeError):
+    def __init__(self, message: str, *, status: SurfaceFetchStatus = SurfaceFetchStatus.API_ERROR, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status = status
+        self.status_code = status_code
+
+
+class IemAsosOneMinuteArchive:
+    """Historical NCEI ASOS one-minute data exposed by Iowa State IEM.
+
+    Important: this is the NCEI one-minute archive, not the MADIS one-minute
+    stream and not the public whole-C five-minute feed. IEM's current API
+    requires explicit ``sts``, ``ets`` and ``vars`` parameters. Legacy
+    year/month/day-only requests return HTTP 422.
     """
 
     URL = "https://mesonet.agron.iastate.edu/cgi-bin/request/asos1min.py"
+    VARIABLES = ("tmpf", "dwpf", "drct", "sknt", "pres1")
 
     def __init__(self, timeout_s: float = 45.0) -> None:
         self.timeout_s = timeout_s
@@ -62,43 +79,86 @@ class IemAsosOneMinuteArchive:
                 raise
         return dt.replace(tzinfo=dt.tzinfo or timezone.utc).astimezone(timezone.utc)
 
+    @staticmethod
+    def _iem_station(station: str) -> str:
+        value = station.strip().upper()
+        # IEM's ASOS1MIN database uses the three-character US station id, e.g.
+        # MDW, while our canonical catalog uses ICAO KMDW.
+        return value[1:] if len(value) == 4 and value.startswith("K") else value
+
+    @staticmethod
+    def _iso_z(dt: datetime) -> str:
+        return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
     async def fetch(self, stations: Iterable[str], start: datetime, end: datetime) -> list[SurfaceObservation]:
+        if start.tzinfo is None or end.tzinfo is None:
+            raise ValueError("start/end must be timezone-aware")
         start = start.astimezone(timezone.utc)
         end = end.astimezone(timezone.utc)
+        if end <= start:
+            raise ValueError("end must be after start")
+
+        canonical = [s.strip().upper() for s in stations if s and s.strip()]
+        if not canonical:
+            return []
+        iem_ids = [self._iem_station(s) for s in canonical]
+
         params: list[tuple[str, str]] = [
             ("tz", "UTC"),
-            ("year1", str(start.year)), ("month1", str(start.month)), ("day1", str(start.day)),
-            ("hour1", str(start.hour)), ("minute1", str(start.minute)),
-            ("year2", str(end.year)), ("month2", str(end.month)), ("day2", str(end.day)),
-            ("hour2", str(end.hour)), ("minute2", str(end.minute)),
-            ("sample", "1min"), ("what", "download"), ("delim", "comma"), ("gis", "no"),
+            ("sts", self._iso_z(start)),
+            ("ets", self._iso_z(end)),
+            ("sample", "1min"),
+            ("what", "download"),
+            ("delim", "comma"),
+            ("gis", "false"),
         ]
-        for station in stations:
-            params.append(("station", station.removeprefix("K")))
-        async with httpx.AsyncClient(timeout=self.timeout_s, follow_redirects=True) as client:
-            r = await client.get(self.URL, params=params)
-            r.raise_for_status()
+        for station in iem_ids:
+            params.append(("station", station))
+        for var in self.VARIABLES:
+            params.append(("vars", var))
+
+        async with httpx.AsyncClient(timeout=self.timeout_s, follow_redirects=True, headers={"User-Agent": "weather-alpha-lab/0.5"}) as client:
+            response = await client.get(self.URL, params=params)
+
+        if response.status_code >= 400:
+            body = response.text[:500].replace("\n", " ")
+            raise SurfaceFetchError(
+                f"IEM ASOS1MIN HTTP {response.status_code}: {body}",
+                status=SurfaceFetchStatus.API_ERROR,
+                status_code=response.status_code,
+            )
+
+        reader = csv.DictReader(io.StringIO(response.text))
         rows: list[SurfaceObservation] = []
-        text = r.text
-        reader = csv.DictReader(io.StringIO(text))
         for row in reader:
             station = (row.get("station") or row.get("station_id") or "").strip().upper()
             if station and len(station) == 3:
                 station = "K" + station
-            valid = row.get("valid") or row.get("valid(UTC)") or row.get("timestamp")
+            valid = row.get("valid(UTC)") or row.get("valid") or row.get("timestamp")
             if not station or not valid:
                 continue
             rows.append(SurfaceObservation(
                 station=station,
                 valid_time=self._parse_time(valid),
-                temperature_f=self._num(row.get("tmpf") or row.get("tmpf_1min")),
-                dewpoint_f=self._num(row.get("dwpf") or row.get("dwpf_1min")),
-                wind_direction_deg=self._num(row.get("drct") or row.get("drct_1min")),
-                wind_speed_kt=self._num(row.get("sknt") or row.get("sknt_1min")),
-                pressure_mb=self._num(row.get("mslp") or row.get("mslp_1min")),
-                source="IEM_ASOS_1MIN_ARCHIVE",
+                temperature_f=self._num(row.get("tmpf")),
+                dewpoint_f=self._num(row.get("dwpf")),
+                wind_direction_deg=self._num(row.get("drct")),
+                wind_speed_kt=self._num(row.get("sknt")),
+                # IEM ASOS1MIN exposes pres1/pres2/pres3 rather than MSLP.
+                # Keep the field for compatibility; pressure is not used by the
+                # settlement-extreme study until its units/semantics are audited.
+                pressure_mb=None,
+                source="IEM_NCEI_ASOS_1MIN_ARCHIVE",
             ))
-        return sorted(rows, key=lambda x: x.valid_time)
+
+        rows.sort(key=lambda x: x.valid_time)
+        if not rows:
+            raise SurfaceFetchError(
+                f"IEM ASOS1MIN returned no rows for {canonical} {start.isoformat()}..{end.isoformat()}",
+                status=SurfaceFetchStatus.NO_DATA,
+                status_code=response.status_code,
+            )
+        return rows
 
 
 class SurfaceSeries:
