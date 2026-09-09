@@ -56,8 +56,11 @@ def ticker_event_date(event_ticker: str) -> date | None:
 def _dates_from_pairs(pairs: Iterable[tuple[str, str]]) -> list[tuple[date, str]]:
     found: list[tuple[date, str]] = []
     for path, text in pairs:
-        # Dates only count as authoritative when attached to a semantic date/rule field.
-        semantic = any(token in path.lower() for token in ("settle", "event", "date", "rule", "period", "close"))
+        low = path.lower()
+        leaf = re.sub(r"\[\d+\]", "", low.rsplit(".", 1)[-1])
+        # A market close/expiration date is not settlement-event proof. Prefer
+        # explicit settlement/event/strike date fields or dates stated in rules.
+        semantic = leaf in {"settlement_date", "event_date", "strike_date", "observation_date", "date"} or "rule" in low or "term" in low
         if not semantic:
             continue
         for m in _ISO_DATE.finditer(text):
@@ -71,7 +74,7 @@ def _dates_from_pairs(pairs: Iterable[tuple[str, str]]) -> list[tuple[date, str]
 def resolve_weather_rules(market: dict[str, Any], event: dict[str, Any] | None, series: dict[str, Any] | None) -> ResolutionEvidence:
     """Resolve station/date/source from official Kalshi payloads and fail closed.
 
-    Ticker dates are *only* consistency checks. They never supply the settlement
+    Ticker dates are only consistency checks. They never supply the settlement
     date by themselves. EXACT requires one unique station, one authoritative
     date from event/market rule fields, CLI/NWS-like settlement evidence, and a
     matching ticker date when the ticker encodes one.
@@ -84,7 +87,6 @@ def resolve_weather_rules(market: dict[str, Any], event: dict[str, Any] | None, 
     station_hits: dict[str, list[str]] = {}
     source_hits: list[str] = []
     for path, text in pairs:
-        # Station evidence must occur in rules/settlement/product metadata, not an arbitrary blob.
         if any(token in path.lower() for token in ("settle", "rule", "source", "product", "term", "title", "subtitle")):
             for station in _STATION.findall(text.upper()):
                 station_hits.setdefault(station, []).append(f"{path}={text}")
@@ -125,7 +127,6 @@ def resolve_weather_rules(market: dict[str, Any], event: dict[str, Any] | None, 
 
 
 def enrich_catalog_record(record: WeatherCatalogRecord, evidence: ResolutionEvidence) -> WeatherCatalogRecord:
-    """Apply authoritative rule evidence without weakening existing contract-shape gates."""
     temperature_shape_ok = record.shape is not None if record.measurement.value in {"DAILY_HIGH", "DAILY_LOW", "TEMPERATURE"} else True
     exact = evidence.exact and temperature_shape_ok
     reasons = list(evidence.reasons)
