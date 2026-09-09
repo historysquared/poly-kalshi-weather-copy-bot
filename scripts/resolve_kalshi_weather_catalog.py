@@ -50,12 +50,12 @@ def main() -> int:
     ap.add_argument("--series-jsonl", type=Path, default=Path("/data/weather/raw/kalshi/market_metadata/kalshi_weather_series.jsonl"))
     ap.add_argument("--event-jsonl", type=Path, default=Path("/data/weather/raw/kalshi/market_metadata/kalshi_weather_events.jsonl"))
     ap.add_argument("--output", type=Path, default=Path("/data/weather/normalized/markets/kalshi_weather_catalog_resolved.parquet"))
+    ap.add_argument("--show-unresolved", type=int, default=10)
     args = ap.parse_args()
 
     market_cache = load_jsonl(args.market_jsonl, "ticker")
     series_cache = load_jsonl(args.series_jsonl, "ticker")
     event_cache = load_jsonl(args.event_jsonl, "event_ticker")
-    # Some event responses use ticker rather than event_ticker.
     event_cache.update(load_jsonl(args.event_jsonl, "ticker"))
     catalog = pq.read_table(args.catalog).to_pylist()
     args.event_jsonl.parent.mkdir(parents=True, exist_ok=True)
@@ -63,7 +63,7 @@ def main() -> int:
 
     event_ids = sorted({str(r.get("event_id") or "") for r in catalog if r.get("event_id")})
     series_ids = sorted({str(r.get("contract_id") or "").split("-", 1)[0] for r in catalog if r.get("contract_id")})
-    with httpx.Client(timeout=25.0, follow_redirects=True, headers={"User-Agent": "weather-alpha-lab/0.3"}) as client:
+    with httpx.Client(timeout=25.0, follow_redirects=True, headers={"User-Agent": "weather-alpha-lab/0.4"}) as client:
         with args.event_jsonl.open("a", encoding="utf-8") as eh:
             for event_id in event_ids:
                 if event_id in event_cache:
@@ -71,9 +71,11 @@ def main() -> int:
                 payload = get_json(client, f"/events/{event_id}")
                 item = payload.get("event", payload)
                 if isinstance(item, dict):
-                    item = dict(item); item.setdefault("event_ticker", event_id)
+                    item = dict(item)
+                    item.setdefault("event_ticker", event_id)
                     event_cache[event_id] = item
-                    eh.write(json.dumps(item, sort_keys=True, default=str) + "\n"); eh.flush()
+                    eh.write(json.dumps(item, sort_keys=True, default=str) + "\n")
+                    eh.flush()
                 time.sleep(0.15)
         with args.series_jsonl.open("a", encoding="utf-8") as sh:
             for series_id in series_ids:
@@ -82,18 +84,20 @@ def main() -> int:
                 payload = get_json(client, f"/series/{series_id}?include_product_metadata=true")
                 item = payload.get("series", payload)
                 if isinstance(item, dict):
-                    item = dict(item); item.setdefault("ticker", series_id)
+                    item = dict(item)
+                    item.setdefault("ticker", series_id)
                     series_cache[series_id] = item
-                    sh.write(json.dumps(item, sort_keys=True, default=str) + "\n"); sh.flush()
+                    sh.write(json.dumps(item, sort_keys=True, default=str) + "\n")
+                    sh.flush()
                 time.sleep(0.15)
 
     rows: list[dict[str, Any]] = []
     counts: Counter[str] = Counter()
+    reason_counts: Counter[str] = Counter()
     for old in catalog:
         ticker = str(old.get("contract_id") or "")
         market = market_cache.get(ticker)
         if market is None:
-            # The normalized catalog intentionally does not contain enough raw rule text to prove EXACT.
             counts["MISSING_MARKET_RAW"] += 1
             continue
         event_id = str(market.get("event_ticker") or old.get("event_id") or "")
@@ -102,6 +106,7 @@ def main() -> int:
         ev = resolve_weather_rules(market, event_cache.get(event_id), series_cache.get(series_id))
         enriched = enrich_catalog_record(rec, ev)
         counts[enriched.status.value] += 1
+        reason_counts.update(enriched.reasons)
         rows.append({
             "venue": enriched.venue,
             "contract_id": enriched.contract_id,
@@ -118,6 +123,8 @@ def main() -> int:
             "close_time": enriched.close_time.isoformat() if enriched.close_time else None,
             "ticker_date_check": ev.ticker_date_check.isoformat() if ev.ticker_date_check else None,
             "ticker_date_matches": ev.ticker_date_matches,
+            "series_drift_risk": ev.series_drift_risk,
+            "series_last_updated": ev.series_last_updated.isoformat() if ev.series_last_updated else None,
             "station_evidence": list(ev.station_evidence),
             "date_evidence": list(ev.date_evidence),
             "source_evidence": list(ev.source_evidence),
@@ -127,6 +134,20 @@ def main() -> int:
     pq.write_table(pa.Table.from_pylist(rows), args.output)
     print(f"rows={len(rows)} status_counts={dict(counts)}")
     print(f"events_cached={len(event_cache)} series_cached={len(series_cache)}")
+    print(f"reason_counts={dict(reason_counts)}")
+    unresolved = [r for r in rows if r["status"] != "EXACT"]
+    for row in unresolved[: max(0, args.show_unresolved)]:
+        print({
+            "contract_id": row["contract_id"],
+            "station": row["station"],
+            "settlement_date": row["settlement_date"],
+            "ticker_date_check": row["ticker_date_check"],
+            "series_drift_risk": row["series_drift_risk"],
+            "reasons": row["reasons"],
+            "station_evidence": row["station_evidence"][:2],
+            "date_evidence": row["date_evidence"][:2],
+            "source_evidence": row["source_evidence"][:2],
+        })
     print(f"output={args.output}")
     return 0
 
