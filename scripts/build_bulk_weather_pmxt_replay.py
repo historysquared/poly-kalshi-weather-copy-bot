@@ -4,7 +4,6 @@ import argparse
 import gc
 import os
 from collections import Counter
-from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -27,6 +26,22 @@ REQUIRED_COLUMNS = [
     "delta",
     "side",
 ]
+
+LEVEL_TYPE = pa.struct([
+    pa.field("price", pa.string(), nullable=False),
+    pa.field("size", pa.string(), nullable=False),
+])
+OUTPUT_SCHEMA = pa.schema([
+    pa.field("contract_id", pa.string(), nullable=False),
+    pa.field("market_id", pa.string(), nullable=False),
+    pa.field("book_time", pa.string(), nullable=False),
+    pa.field("received_time", pa.string(), nullable=False),
+    pa.field("exchange_time", pa.string(), nullable=True),
+    pa.field("clock_source", pa.string(), nullable=False),
+    pa.field("yes_bids", pa.list_(LEVEL_TYPE), nullable=False),
+    pa.field("no_bids", pa.list_(LEVEL_TYPE), nullable=False),
+    pa.field("source_file", pa.string(), nullable=False),
+])
 
 
 def _levels(levels: tuple[tuple[Any, Any], ...]) -> list[dict[str, str]]:
@@ -105,6 +120,13 @@ def _output_row(book: ReconstructedKalshiBook, source_file: str) -> dict[str, An
     }
 
 
+def _rows_to_table(rows: list[dict[str, Any]]) -> pa.Table:
+    # Force the same Arrow schema on every flush. In particular, an empty
+    # yes_bids/no_bids list must stay list<struct<price:string,size:string>>
+    # rather than being inferred as list<null> by Arrow.
+    return pa.Table.from_pylist(rows, schema=OUTPUT_SCHEMA)
+
+
 def _flush_rows(
     writer: pq.ParquetWriter | None,
     rows: list[dict[str, Any]],
@@ -112,9 +134,9 @@ def _flush_rows(
 ) -> pq.ParquetWriter | None:
     if not rows:
         return writer
-    table = pa.Table.from_pylist(rows)
+    table = _rows_to_table(rows)
     if writer is None:
-        writer = pq.ParquetWriter(output, table.schema, compression="zstd")
+        writer = pq.ParquetWriter(output, OUTPUT_SCHEMA, compression="zstd")
     writer.write_table(table)
     rows.clear()
     del table
@@ -210,7 +232,9 @@ def main() -> int:
             writer = None
             os.replace(tmp_output, args.output)
         else:
-            pq.write_table(pa.table({"contract_id": pa.array([], type=pa.string())}), args.output, compression="zstd")
+            empty_arrays = [pa.array([], type=field.type) for field in OUTPUT_SCHEMA]
+            empty_table = pa.Table.from_arrays(empty_arrays, schema=OUTPUT_SCHEMA)
+            pq.write_table(empty_table, args.output, compression="zstd")
             if tmp_output.exists():
                 tmp_output.unlink()
 
