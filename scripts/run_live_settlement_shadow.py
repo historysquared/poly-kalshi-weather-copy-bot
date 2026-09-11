@@ -15,6 +15,7 @@ import pyarrow.parquet as pq
 
 from weather_alpha.backtest.causal_settlement import TimedTemperature, empirical_settlement_posterior, lock_gate, surface_state
 from weather_alpha.markets.kalshi_weather_resolver import enrich_catalog_record, resolve_weather_rules
+from weather_alpha.markets.source_family import detect_settlement_source_family
 from weather_alpha.markets.weather_catalog import classify_kalshi_market
 from weather_alpha.providers.surface import IemAsosOneMinuteArchive
 from weather_alpha.settlement.reconstruction import local_standard_settlement_window
@@ -72,14 +73,14 @@ def fetch_current_catalog(series_ids: list[str], *, raw_audit_output: Path | Non
     Kalshi's list-markets payload can omit rule/source text that is available from
     the individual market endpoint. The resolver must see the full official
     payload or fail closed. This function therefore discovers tickers from the
-    list endpoint, then hydrates every ticker with /markets/{ticker}, and stores
-    the exact market/event/series inputs used by the resolver for auditability.
+    list endpoint, then hydrates every ticker with /markets/{ticker}, stores the
+    exact official payloads used, and separately detects settlement-source family.
     """
     resolved: list[dict[str, Any]] = []
     raw_markets: list[dict[str, Any]] = []
     fetched_at = datetime.now(timezone.utc).isoformat()
 
-    with httpx.Client(timeout=25.0, follow_redirects=True, headers={"User-Agent":"weather-alpha-shadow/0.2"}) as client:
+    with httpx.Client(timeout=25.0, follow_redirects=True, headers={"User-Agent":"weather-alpha-shadow/0.3"}) as client:
         series_cache: dict[str, dict[str, Any]] = {}
         event_cache: dict[str, dict[str, Any]] = {}
 
@@ -99,8 +100,6 @@ def fetch_current_catalog(series_ids: list[str], *, raw_audit_output: Path | Non
                 if not ticker:
                     continue
 
-                # Critical: hydrate the slim list payload with the full official
-                # market record. Never certify EXACT from inferred city/ticker.
                 detail_payload = get_json(client, f"/markets/{ticker}")
                 detail_market = detail_payload.get("market", detail_payload)
                 market = dict(listed_market)
@@ -117,6 +116,7 @@ def fetch_current_catalog(series_ids: list[str], *, raw_audit_output: Path | Non
 
                 event = event_cache.get(event_id)
                 series_row = series_cache.get(series)
+                source_detection = detect_settlement_source_family(market, event, series_row)
                 rec = classify_kalshi_market(market)
                 evidence = resolve_weather_rules(market, event, series_row)
                 enriched = enrich_catalog_record(rec, evidence)
@@ -129,6 +129,8 @@ def fetch_current_catalog(series_ids: list[str], *, raw_audit_output: Path | Non
                         "market": market,
                         "event": event,
                         "series": series_row,
+                        "settlement_source_family": source_detection.family,
+                        "settlement_source_family_evidence": list(source_detection.evidence),
                         "resolution": {
                             "status": enriched.status.value,
                             "station": evidence.station,
@@ -154,6 +156,8 @@ def fetch_current_catalog(series_ids: list[str], *, raw_audit_output: Path | Non
                     "lower": enriched.lower,
                     "upper": enriched.upper,
                     "settlement_source": enriched.settlement_source,
+                    "settlement_source_family": source_detection.family,
+                    "settlement_source_family_evidence": list(source_detection.evidence),
                     "reasons": list(enriched.reasons),
                     "station_evidence": list(evidence.station_evidence),
                     "date_evidence": list(evidence.date_evidence),
@@ -183,7 +187,8 @@ def evaluate_once(args: argparse.Namespace, prior_by_station: dict[str, list[dic
     catalog, _ = fetch_current_catalog(series_ids, raw_audit_output=args.raw_audit_output)
     exact = [r for r in catalog if r.get("status") == "EXACT"]
     counts = Counter(r.get("status") for r in catalog)
-    print(f"as_of={now.isoformat()} current_contracts={len(catalog)} status_counts={dict(counts)} exact={len(exact)}")
+    source_counts = Counter(r.get("settlement_source_family") for r in catalog)
+    print(f"as_of={now.isoformat()} current_contracts={len(catalog)} status_counts={dict(counts)} exact={len(exact)} source_families={dict(source_counts)}")
 
     rows: list[dict[str, Any]] = []
     obs_cache: dict[tuple[str, str], list[TimedTemperature]] = {}
@@ -207,6 +212,8 @@ def evaluate_once(args: argparse.Namespace, prior_by_station: dict[str, list[dic
             "catalog_status": contract.get("status"),
             "station": contract.get("station"),
             "settlement_date": contract.get("settlement_date"),
+            "settlement_source_family": contract.get("settlement_source_family"),
+            "settlement_source_family_evidence": contract.get("settlement_source_family_evidence"),
             "shape": contract.get("shape"),
             "lower": contract.get("lower"),
             "upper": contract.get("upper"),
@@ -226,6 +233,12 @@ def evaluate_once(args: argparse.Namespace, prior_by_station: dict[str, list[dic
             "minimum_edge": str(args.minimum_edge),
             "benchmark_latency_seconds": args.benchmark_latency_seconds,
         }
+
+        if contract.get("settlement_source_family") in {"WEATHER_COMPANY", "MIXED_OR_TRANSITIONAL"}:
+            row["decision"] = "SOURCE_MISMATCH_WEATHER_COMPANY_NO_TRADE"
+            row["model_applicability"] = "NWS_CLI_SETTLEMENT_BASIS_MODEL_NOT_VALIDATED_FOR_WEATHER_COMPANY"
+            rows.append(row)
+            continue
 
         if contract.get("status") != "EXACT" or not contract.get("station") or not contract.get("settlement_date"):
             row["decision"] = "AUDIT_ONLY_UNRESOLVED_NO_TRADE"
@@ -290,6 +303,7 @@ def evaluate_once(args: argparse.Namespace, prior_by_station: dict[str, list[dic
 
         row.update({
             "decision": decision,
+            "model_applicability": "NWS_CLI_VALIDATED_SOURCE_FAMILY",
             "lock_gate_pass": locked,
             "lock_gate_reasons": list(reasons),
             "observations_used": state.observations_used,
@@ -312,10 +326,11 @@ def evaluate_once(args: argparse.Namespace, prior_by_station: dict[str, list[dic
     for row in rows:
         append_jsonl(args.output, row)
 
-    print("ticker | status | station | day | yes_bid/ask | no_bid/ask | p_yes | decision")
+    print("ticker | source_family | status | station | day | yes_bid/ask | no_bid/ask | p_yes | decision")
     for row in sorted(rows, key=lambda r: (str(r.get("settlement_date")), str(r.get("contract_id")))):
         print(
-            f"{row.get('contract_id')} | {row.get('catalog_status')} | {row.get('station')} | {row.get('settlement_date')} | "
+            f"{row.get('contract_id')} | {row.get('settlement_source_family')} | {row.get('catalog_status')} | "
+            f"{row.get('station')} | {row.get('settlement_date')} | "
             f"{row.get('yes_bid')}/{row.get('yes_ask')} | {row.get('no_bid')}/{row.get('no_ask')} | "
             f"{row.get('posterior_yes_probability')} | {row.get('decision')}"
         )
