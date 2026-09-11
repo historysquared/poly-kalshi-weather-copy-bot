@@ -10,7 +10,7 @@ from typing import Iterable, Iterator, Optional
 import httpx
 
 PMXT_HOSTED_BASE = "https://api.pmxt.dev/api"
-PMXT_KALSHI_ARCHIVE_BASE = os.getenv("PMXT_KALSHI_ARCHIVE_BASE", "https://archive.pmxt.dev/Kalshi").rstrip("/")
+PMXT_KALSHI_ARCHIVE_BASE = os.getenv("PMXT_KALSHI_ARCHIVE_BASE", "https://r2kalshi.pmxt.dev").rstrip("/")
 
 
 @dataclass(frozen=True)
@@ -287,6 +287,19 @@ def download_kalshi_hour(hour: datetime,output_dir: Path,*,overwrite=False,timeo
     with httpx.stream("GET",kalshi_hourly_url(hour),follow_redirects=True,timeout=timeout_s) as response:
         if response.status_code==404: raise FileNotFoundError(kalshi_hourly_url(hour))
         response.raise_for_status()
+        content_type=(response.headers.get("content-type") or "").lower()
+        if "text/html" in content_type:
+            raise ValueError(f"PMXT archive returned HTML instead of Parquet: {kalshi_hourly_url(hour)}")
         with tmp.open("wb") as handle:
             for chunk in response.iter_bytes(): handle.write(chunk)
+    # Parquet files must start and end with the PAR1 magic bytes. Refuse to
+    # promote an archive index/error page into the raw-data cache.
+    if tmp.stat().st_size < 8:
+        tmp.unlink(missing_ok=True); raise ValueError(f"PMXT archive file too small: {kalshi_hourly_url(hour)}")
+    with tmp.open("rb") as handle:
+        head=handle.read(4)
+        handle.seek(-4,2)
+        tail=handle.read(4)
+    if head!=b"PAR1" or tail!=b"PAR1":
+        tmp.unlink(missing_ok=True); raise ValueError(f"PMXT archive payload is not Parquet: {kalshi_hourly_url(hour)}")
     tmp.replace(dest); return dest
