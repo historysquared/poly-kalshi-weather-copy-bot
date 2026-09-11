@@ -324,7 +324,7 @@ def write_outputs(args, snap: dict) -> None:
         f"generated={snap['generated_at']} contracts={c['contracts']} events={c['events']} "
         f"eligible={c['eligible']} pending={c['pending']} traded={c['traded_events']} quotes={c['audited_contract_quotes']}"
     )
-    lines.append("station event          temp high age  mins_left bucket      side p_yes ask  fee  netedge decision")
+    lines.append("station event          temp high age  mins_left bucket      side p_yes ask  l2ask sprd netedge decision")
     for r in snap["rows"]:
         lines.append(
             f"{str(r.get('station','-')):7} {str(r.get('event_id','-')):14.14} "
@@ -332,7 +332,7 @@ def write_outputs(args, snap: dict) -> None:
             f"{str(r.get('obs_age_minutes','-'))[:5]:>5} {str(r.get('minutes_to_settlement_end','-'))[:8]:>8} "
             f"{str(r.get('bucket','-'))[:10]:>10} {str(r.get('side','-')):>4} "
             f"{str(r.get('model_probability_yes','-'))[:5]:>5} {str(r.get('entry_ask','-'))[:5]:>5} "
-            f"{str(r.get('estimated_taker_fee_per_contract','-'))[:5]:>5} "
+            f"{str(r.get('l2_best_ask','-'))[:5]:>5} {str(r.get('l2_spread','-'))[:5]:>5} "
             f"{str(r.get('net_edge_after_fee','-'))[:7]:>7} {r.get('decision','-')}"
         )
     atomic_text(args.text_output, "\n".join(lines) + "\n")
