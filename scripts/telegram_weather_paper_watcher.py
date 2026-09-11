@@ -88,6 +88,15 @@ def format_weather_event(kind: str, payload: dict[str, Any], timezone_name: str)
     lines.append(f"Since high {_fmt(since,1,'m')} | Drop {_fmt(drop,2,'F')} | 15m slope {_fmt(slope,4)}")
     if failures:
         lines.append("Gate: " + ", ".join(str(x) for x in failures[:4]))
+    if payload.get("near_control_signal"):
+        lines.append(
+            "Near control: time "
+            + _fmt(payload.get("control_minutes_margin"), 1, "m")
+            + " | drop "
+            + _fmt(payload.get("control_drop_margin_f"), 2, "F")
+            + " | slope "
+            + _fmt(payload.get("control_slope_margin_f_per_min"), 4)
+        )
     lines.append(_local_timestamp(ts_raw, timezone_name))
     lines.append("PAPER ONLY — no live order")
     return "\n".join(lines)
