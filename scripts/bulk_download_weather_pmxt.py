@@ -65,6 +65,9 @@ def main() -> int:
     downloaded = 0
     with httpx.Client(timeout=20.0, follow_redirects=True, headers={"User-Agent":"weather-alpha-lab/0.6"}) as client:
         for i, item in enumerate(plan, 1):
+            if args.max_download_hours and downloaded >= args.max_download_hours:
+                print(f"download_limit_reached={downloaded}; stopping traversal at {i-1}/{len(plan)}", flush=True)
+                break
             local_state = local_archive_state(args.pmxt_dir, item)
             remote_state = None
             content_length = None
@@ -107,7 +110,7 @@ def main() -> int:
             if i % 50 == 0 or status.startswith("DOWNLOAD_ERROR"):
                 newest = plan[0].hour_utc.isoformat() if plan else None
                 oldest = plan[-1].hour_utc.isoformat() if plan else None
-                print(f"progress={i}/{len(plan)} order={args.order} newest={newest} oldest={oldest} counts={dict(counters)}")
+                print(f"progress={i}/{len(plan)} order={args.order} newest={newest} oldest={oldest} counts={dict(counters)}", flush=True)
                 _write_manifest(manifest_rows, args.manifest)
             time.sleep(max(0.0, args.sleep))
 
@@ -133,7 +136,7 @@ def main() -> int:
     exact_events = {str(r.get("weather_event_id")) for r in catalog if r.get("status") == "EXACT" and r.get("weather_event_id")}
     settlement_dates = {str(r.get("settlement_date")) for r in catalog if r.get("status") == "EXACT" and r.get("settlement_date")}
     stations = {str(r.get("station")) for r in catalog if r.get("status") == "EXACT" and r.get("station")}
-    print(f"planned_hours={len(plan)} order={args.order} exact_contracts={len(exact_tickers)} exact_events={len(exact_events)} settlement_dates={len(settlement_dates)} stations={len(stations)}")
+    print(f"planned_hours={len(plan)} order={args.order} exact_contracts={len(exact_tickers)} exact_events={len(exact_events)} settlement_dates={len(settlement_dates)} stations={len(stations)}", flush=True)
     print(f"status_counts={dict(counters)}")
     print(f"local_files={len(local_files)} relevant_raw_events={relevant_events} covered_contracts={len(covered_tickers)}")
     print(f"manifest={args.manifest}")
