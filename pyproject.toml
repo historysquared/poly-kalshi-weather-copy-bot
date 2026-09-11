@@ -16,6 +16,7 @@ dependencies = [
   "pyarrow>=17.0",
   "duckdb>=1.1",
   "cryptography>=43.0",
+  "websockets>=13.0",
   "xarray>=2024.7",
   "netcdf4>=1.7",
   "h5netcdf>=1.3",
