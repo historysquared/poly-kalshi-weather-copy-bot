@@ -4,7 +4,7 @@ import argparse
 import json
 import time
 from collections import Counter
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -45,26 +45,13 @@ def load_jsonl(path: Path, key: str) -> dict[str, dict[str, Any]]:
     return out
 
 
-def market_day(row: dict[str, Any]) -> date | None:
-    text = str(row.get("event_ticker") or row.get("ticker") or "")
-    parts = text.split("-")
-    if len(parts) < 2:
-        return None
-    token = parts[1].upper()
-    months = {"JAN":1,"FEB":2,"MAR":3,"APR":4,"MAY":5,"JUN":6,"JUL":7,"AUG":8,"SEP":9,"OCT":10,"NOV":11,"DEC":12}
-    try:
-        if len(token) == 7 and token[:2].isdigit() and token[2:5] in months and token[5:].isdigit():
-            return date(2000 + int(token[:2]), months[token[2:5]], int(token[5:]))
-    except ValueError:
-        return None
-    return None
-
 
 def main() -> int:
     p = argparse.ArgumentParser(description="Fetch all historical Kalshi daily-high weather markets for configured recurring series and resolve exact settlement truth")
     p.add_argument("--series", default=",".join(DEFAULT_SERIES))
     p.add_argument("--start-date", type=date.fromisoformat, default=date(2026, 1, 1))
     p.add_argument("--end-date", type=date.fromisoformat, default=None)
+    p.add_argument("--recent-only", action="store_true", help="Use only the live /markets tier, scoped to the requested settled-date window. Best for recent manual-validation datasets.")
     p.add_argument("--market-jsonl", type=Path, default=Path("/data/weather/raw/kalshi/market_metadata/kalshi_weather_historical_bulk.jsonl"))
     p.add_argument("--event-jsonl", type=Path, default=Path("/data/weather/raw/kalshi/market_metadata/kalshi_weather_events_bulk.jsonl"))
     p.add_argument("--series-jsonl", type=Path, default=Path("/data/weather/raw/kalshi/market_metadata/kalshi_weather_series.jsonl"))
@@ -81,34 +68,54 @@ def main() -> int:
     with httpx.Client(timeout=30.0, follow_redirects=True, headers={"User-Agent":"weather-alpha-lab/0.5"}) as client:
         with args.market_jsonl.open("a", encoding="utf-8") as mh:
             for series in series_ids:
-                cursor = ""
+                source_counts: Counter[str] = Counter()
                 pages = 0
-                while True:
-                    # Kalshi historical-market filters are mutually exclusive.
-                    # In particular, series_ticker cannot be combined with mve_filter.
-                    params: dict[str, Any] = {"limit":1000, "series_ticker":series}
-                    if cursor:
-                        params["cursor"] = cursor
-                    payload = get_json(client, "/historical/markets", params)
-                    markets = payload.get("markets") or []
-                    pages += 1
-                    for market in markets:
-                        if not isinstance(market, dict):
-                            continue
-                        ticker = str(market.get("ticker") or "")
-                        if not ticker:
-                            continue
-                        day = market_day(market)
-                        if day and day < args.start_date:
-                            continue
-                        if args.end_date and day and day > args.end_date:
-                            continue
-                        raw_markets[ticker] = market
-                        mh.write(json.dumps(market, sort_keys=True, default=str) + "\n")
-                    cursor = str(payload.get("cursor") or "")
-                    if not cursor:
-                        break
-                print(f"series={series} pages={pages} retained_markets={sum(1 for m in raw_markets.values() if str(m.get('ticker') or '').startswith(series+'-'))}")
+                # Recent validation should stay on the live tier and use settlement-time
+                # bounds. Historical backfills query both tiers. Exclude multivariate combos
+                # so a recurring-series request cannot explode into unrelated combo markets.
+                sources = (("/markets", "live"),) if args.recent_only else (("/markets", "live"), ("/historical/markets", "historical"))
+                for endpoint, source_name in sources:
+                    cursor = ""
+                    while True:
+                        params: dict[str, Any] = {"limit": 1000, "series_ticker": series, "mve_filter": "exclude"}
+                        if source_name == "live":
+                            params["status"] = "settled"
+                            # Settlement timestamps are UTC while weather settlement dates are
+                            # station-local/LST. Use a two-day pad, then apply the authoritative
+                            # resolved settlement-date filter below.
+                            start_utc = datetime.combine(args.start_date - timedelta(days=2), datetime.min.time(), tzinfo=timezone.utc)
+                            params["min_settled_ts"] = int(start_utc.timestamp())
+                            if args.end_date:
+                                end_utc = datetime.combine(args.end_date + timedelta(days=2), datetime.max.time(), tzinfo=timezone.utc)
+                                params["max_settled_ts"] = int(end_utc.timestamp())
+                        if cursor:
+                            params["cursor"] = cursor
+                        payload = get_json(client, endpoint, params)
+                        markets = payload.get("markets") or []
+                        pages += 1
+                        for market in markets:
+                            if not isinstance(market, dict):
+                                continue
+                            ticker = str(market.get("ticker") or "")
+                            event_ticker = str(market.get("event_ticker") or "")
+                            if not ticker:
+                                continue
+                            # Guard against a server/filter regression without inferring dates
+                            # from ticker text. Series events are documented to share the series
+                            # ticker prefix.
+                            if event_ticker and not event_ticker.startswith(series + "-"):
+                                source_counts["wrong_series_skipped"] += 1
+                                continue
+                            item = dict(market)
+                            item["_queried_series"] = series
+                            item["_api_tier"] = source_name
+                            raw_markets[ticker] = item
+                            source_counts[source_name] += 1
+                            mh.write(json.dumps(item, sort_keys=True, default=str) + "\n")
+                        cursor = str(payload.get("cursor") or "")
+                        if not cursor:
+                            break
+                print(f"series={series} pages={pages} source_counts={dict(source_counts)} total_unique_markets={sum(1 for m in raw_markets.values() if m.get('_queried_series') == series)}", flush=True)
 
         event_ids = sorted({str(m.get("event_ticker") or "") for m in raw_markets.values() if m.get("event_ticker")})
         with args.event_jsonl.open("a", encoding="utf-8") as eh:
@@ -142,10 +149,16 @@ def main() -> int:
     event_counts: Counter[str] = Counter()
     for ticker, market in sorted(raw_markets.items()):
         event_id = str(market.get("event_ticker") or "")
-        series_id = ticker.split("-", 1)[0]
+        series_id = str(market.get("_queried_series") or ticker.split("-", 1)[0])
         rec = classify_kalshi_market(market)
         evidence = resolve_weather_rules(market, event_cache.get(event_id), series_cache.get(series_id))
         enriched = enrich_catalog_record(rec, evidence)
+        # Date filtering must happen AFTER rules resolution. Kalshi explicitly warns
+        # clients not to infer relationships/dates from ticker strings.
+        if enriched.settlement_date and enriched.settlement_date < args.start_date:
+            continue
+        if args.end_date and enriched.settlement_date and enriched.settlement_date > args.end_date:
+            continue
         counts[enriched.status.value] += 1
         if enriched.weather_event_id:
             event_counts[enriched.weather_event_id] += 1
