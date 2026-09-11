@@ -47,6 +47,8 @@ def main() -> int:
     p.add_argument("--pmxt-dir", type=Path, default=Path("/data/weather/raw/kalshi/pmxt_orderbooks_bulk"))
     p.add_argument("--manifest", type=Path, default=Path("/data/weather/manifests/kalshi_weather_pmxt_bulk.jsonl"))
     p.add_argument("--final-hours", type=int, default=6)
+    p.add_argument("--order", choices=("recent-first", "oldest-first"), default="recent-first",
+                   help="Archive traversal order. recent-first is the research default so newest verifiable days arrive first.")
     p.add_argument("--probe-only", action=argparse.BooleanOptionalAction, default=False)
     p.add_argument("--max-download-hours", type=int, default=0, help="0 means unlimited; useful for staged runs")
     p.add_argument("--sleep", type=float, default=0.02)
@@ -55,12 +57,13 @@ def main() -> int:
     catalog = pq.read_table(args.catalog).to_pylist()
     exact_tickers = {str(r.get("contract_id") or "") for r in catalog if r.get("status") == "EXACT" and r.get("contract_id")}
     plan = plan_archive_hours(catalog, final_hours=args.final_hours)
+    plan = sorted(plan, key=lambda item: item.hour_utc, reverse=args.order == "recent-first")
     args.pmxt_dir.mkdir(parents=True, exist_ok=True)
 
     manifest_rows: list[dict[str, Any]] = []
     counters: Counter[str] = Counter()
     downloaded = 0
-    with httpx.Client(timeout=20.0, follow_redirects=True, headers={"User-Agent":"weather-alpha-lab/0.5"}) as client:
+    with httpx.Client(timeout=20.0, follow_redirects=True, headers={"User-Agent":"weather-alpha-lab/0.6"}) as client:
         for i, item in enumerate(plan, 1):
             local_state = local_archive_state(args.pmxt_dir, item)
             remote_state = None
@@ -87,6 +90,7 @@ def main() -> int:
                         status = f"DOWNLOAD_ERROR:{type(exc).__name__}"
             counters[status] += 1
             row = {
+                "order": args.order,
                 "hour_utc": item.hour_utc.isoformat(),
                 "station_example": item.station,
                 "settlement_date_example": item.settlement_date.isoformat(),
@@ -101,7 +105,9 @@ def main() -> int:
             }
             manifest_rows.append(row)
             if i % 50 == 0 or status.startswith("DOWNLOAD_ERROR"):
-                print(f"progress={i}/{len(plan)} counts={dict(counters)}")
+                newest = plan[0].hour_utc.isoformat() if plan else None
+                oldest = plan[-1].hour_utc.isoformat() if plan else None
+                print(f"progress={i}/{len(plan)} order={args.order} newest={newest} oldest={oldest} counts={dict(counters)}")
                 _write_manifest(manifest_rows, args.manifest)
             time.sleep(max(0.0, args.sleep))
 
@@ -127,7 +133,7 @@ def main() -> int:
     exact_events = {str(r.get("weather_event_id")) for r in catalog if r.get("status") == "EXACT" and r.get("weather_event_id")}
     settlement_dates = {str(r.get("settlement_date")) for r in catalog if r.get("status") == "EXACT" and r.get("settlement_date")}
     stations = {str(r.get("station")) for r in catalog if r.get("status") == "EXACT" and r.get("station")}
-    print(f"planned_hours={len(plan)} exact_contracts={len(exact_tickers)} exact_events={len(exact_events)} settlement_dates={len(settlement_dates)} stations={len(stations)}")
+    print(f"planned_hours={len(plan)} order={args.order} exact_contracts={len(exact_tickers)} exact_events={len(exact_events)} settlement_dates={len(settlement_dates)} stations={len(stations)}")
     print(f"status_counts={dict(counters)}")
     print(f"local_files={len(local_files)} relevant_raw_events={relevant_events} covered_contracts={len(covered_tickers)}")
     print(f"manifest={args.manifest}")
