@@ -66,32 +66,82 @@ def append_jsonl(path: Path, row: dict[str, Any]) -> None:
         handle.write(json.dumps(row, sort_keys=True, default=str) + "\n")
 
 
-def fetch_current_catalog(series_ids: list[str]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+def fetch_current_catalog(series_ids: list[str], *, raw_audit_output: Path | None = None) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Fetch open weather markets using full per-market payloads before resolution.
+
+    Kalshi's list-markets payload can omit rule/source text that is available from
+    the individual market endpoint. The resolver must see the full official
+    payload or fail closed. This function therefore discovers tickers from the
+    list endpoint, then hydrates every ticker with /markets/{ticker}, and stores
+    the exact market/event/series inputs used by the resolver for auditability.
+    """
     resolved: list[dict[str, Any]] = []
     raw_markets: list[dict[str, Any]] = []
-    with httpx.Client(timeout=25.0, follow_redirects=True, headers={"User-Agent":"weather-alpha-shadow/0.1"}) as client:
+    fetched_at = datetime.now(timezone.utc).isoformat()
+
+    with httpx.Client(timeout=25.0, follow_redirects=True, headers={"User-Agent":"weather-alpha-shadow/0.2"}) as client:
         series_cache: dict[str, dict[str, Any]] = {}
         event_cache: dict[str, dict[str, Any]] = {}
+
         for series in series_ids:
             sp = get_json(client, f"/series/{series}", {"include_product_metadata":"true"})
             srow = sp.get("series", sp)
             if isinstance(srow, dict):
                 series_cache[series] = srow
+
             payload = get_json(client, "/markets", {"series_ticker": series, "status":"open", "limit":1000})
             markets = payload.get("markets") or []
-            for market in markets:
-                if not isinstance(market, dict):
+
+            for listed_market in markets:
+                if not isinstance(listed_market, dict):
                     continue
+                ticker = str(listed_market.get("ticker") or "")
+                if not ticker:
+                    continue
+
+                # Critical: hydrate the slim list payload with the full official
+                # market record. Never certify EXACT from inferred city/ticker.
+                detail_payload = get_json(client, f"/markets/{ticker}")
+                detail_market = detail_payload.get("market", detail_payload)
+                market = dict(listed_market)
+                if isinstance(detail_market, dict):
+                    market.update(detail_market)
                 raw_markets.append(market)
+
                 event_id = str(market.get("event_ticker") or "")
                 if event_id and event_id not in event_cache:
                     ep = get_json(client, f"/events/{event_id}")
                     erow = ep.get("event", ep)
                     if isinstance(erow, dict):
                         event_cache[event_id] = erow
+
+                event = event_cache.get(event_id)
+                series_row = series_cache.get(series)
                 rec = classify_kalshi_market(market)
-                evidence = resolve_weather_rules(market, event_cache.get(event_id), series_cache.get(series))
+                evidence = resolve_weather_rules(market, event, series_row)
                 enriched = enrich_catalog_record(rec, evidence)
+
+                if raw_audit_output is not None:
+                    append_jsonl(raw_audit_output, {
+                        "fetched_at": fetched_at,
+                        "series_ticker": series,
+                        "contract_id": ticker,
+                        "market": market,
+                        "event": event,
+                        "series": series_row,
+                        "resolution": {
+                            "status": enriched.status.value,
+                            "station": evidence.station,
+                            "settlement_date": evidence.settlement_date.isoformat() if evidence.settlement_date else None,
+                            "exact": evidence.exact,
+                            "series_drift_risk": evidence.series_drift_risk,
+                            "station_evidence": list(evidence.station_evidence),
+                            "date_evidence": list(evidence.date_evidence),
+                            "source_evidence": list(evidence.source_evidence),
+                            "reasons": list(evidence.reasons),
+                        },
+                    })
+
                 resolved.append({
                     "contract_id": enriched.contract_id,
                     "event_id": enriched.event_id,
@@ -105,6 +155,10 @@ def fetch_current_catalog(series_ids: list[str]) -> tuple[list[dict[str, Any]], 
                     "upper": enriched.upper,
                     "settlement_source": enriched.settlement_source,
                     "reasons": list(enriched.reasons),
+                    "station_evidence": list(evidence.station_evidence),
+                    "date_evidence": list(evidence.date_evidence),
+                    "source_evidence": list(evidence.source_evidence),
+                    "series_drift_risk": evidence.series_drift_risk,
                     "market": market,
                 })
     return resolved, raw_markets
@@ -126,7 +180,7 @@ async def fetch_obs(station: str, start: datetime, end: datetime) -> list[TimedT
 def evaluate_once(args: argparse.Namespace, prior_by_station: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
     now = datetime.now(timezone.utc)
     series_ids = [x.strip().upper() for x in args.series.split(",") if x.strip()]
-    catalog, _ = fetch_current_catalog(series_ids)
+    catalog, _ = fetch_current_catalog(series_ids, raw_audit_output=args.raw_audit_output)
     exact = [r for r in catalog if r.get("status") == "EXACT"]
     counts = Counter(r.get("status") for r in catalog)
     print(f"as_of={now.isoformat()} current_contracts={len(catalog)} status_counts={dict(counts)} exact={len(exact)}")
@@ -164,6 +218,10 @@ def evaluate_once(args: argparse.Namespace, prior_by_station: dict[str, list[dic
             "open_interest_fp": market.get("open_interest_fp"),
             "market_updated_time": market.get("updated_time"),
             "catalog_reasons": contract.get("reasons"),
+            "station_evidence": contract.get("station_evidence"),
+            "date_evidence": contract.get("date_evidence"),
+            "source_evidence": contract.get("source_evidence"),
+            "series_drift_risk": contract.get("series_drift_risk"),
             "price_floor": str(args.price_floor),
             "minimum_edge": str(args.minimum_edge),
             "benchmark_latency_seconds": args.benchmark_latency_seconds,
@@ -270,6 +328,7 @@ def main() -> int:
     p.add_argument("--series", default=",".join(DEFAULT_SERIES))
     p.add_argument("--history", type=Path, default=Path("/data/weather/results/settlement_reconstruction/cli_asos_history.parquet"))
     p.add_argument("--output", type=Path, default=Path("/data/weather/live/settlement_shadow.jsonl"))
+    p.add_argument("--raw-audit-output", type=Path, default=Path("/data/weather/live/current_market_resolution_audit.jsonl"))
     p.add_argument("--price-floor", type=Decimal, default=Decimal("0.15"))
     p.add_argument("--minimum-edge", type=Decimal, default=Decimal("0.05"))
     p.add_argument("--minimum-prior-samples", type=int, default=20)
