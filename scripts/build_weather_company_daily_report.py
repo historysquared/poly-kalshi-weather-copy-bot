@@ -66,12 +66,6 @@ def unique_latest(rows: list[dict[str, Any]], key_fields: tuple[str, ...]) -> li
     return list(seen.values())
 
 
-def money(value: Decimal | None) -> str:
-    if value is None:
-        return "-"
-    return f"{value:.4f}"
-
-
 def pct(value: Decimal | None) -> str:
     if value is None:
         return "-"
@@ -99,8 +93,6 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
     reasons = Counter(str(r.get("decision") or "UNKNOWN") for r in contracts_latest)
     eligible_rows = [r for r in contracts_latest if r.get("decision") == "PAPER_TRADE_ELIGIBLE"]
 
-    # Missed opportunities are informational only: contracts that looked eligible in the
-    # latest forward snapshot but were not represented in a paper signal for the event.
     signal_events = {str(r.get("event_id") or "") for r in signals}
     missed = [r for r in eligible_rows if str(r.get("event_id") or "") not in signal_events]
     missed.sort(key=lambda r: D(r.get("net_edge")) or D(r.get("gross_edge")) or Decimal("-999"), reverse=True)
@@ -145,14 +137,15 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
 
 def render_text(report: dict[str, Any]) -> str:
     s = report["summary"]
+    win_rate_text = "-" if s["win_rate"] is None else f"{s['win_rate']:.4f}"
+    roi_text = "-" if s["roi"] is None else pct(D(s["roi"]))
     lines = [
         f"WEATHER COMPANY PAPER DAILY REPORT — {report['day']}",
         f"generated={report['generated_at']} live_order_submission=false",
         "",
         "SUMMARY",
         f"signals={s['signals']} fills={s['fills']} settled={s['settled_trades']} wins={s['wins']} losses={s['losses']} "
-        f"win_rate={'-' if s['win_rate'] is None else f'{s['win_rate']:.4f}'} net_pnl={s['net_pnl']} "
-        f"capital_at_risk={s['capital_at_risk']} roi={'-' if s['roi'] is None else pct(D(s['roi']))}",
+        f"win_rate={win_rate_text} net_pnl={s['net_pnl']} capital_at_risk={s['capital_at_risk']} roi={roi_text}",
         f"dashboard_events={s['dashboard_events']} dashboard_contracts={s['dashboard_contracts']} "
         f"eligible_latest={s['eligible_latest']} missed_latest={s['missed_latest']}",
         "",
