@@ -76,6 +76,12 @@ def evaluate(row: dict[str, Any], args: argparse.Namespace) -> dict[str, Any] | 
         min_drop=args.control_min_drop_from_high_f,
         max_slope=args.control_max_positive_slope,
     )
+    minutes_since_high = D(row.get("minutes_since_high"))
+    drop_from_high = D(row.get("drop_from_high_f"))
+    slope_15m = D(row.get("slope_15m_f_per_min"))
+    minutes_margin = None if minutes_since_high is None else minutes_since_high - args.control_min_minutes_since_high
+    drop_margin = None if drop_from_high is None else drop_from_high - args.control_min_drop_from_high_f
+    slope_margin = None if slope_15m is None else args.control_max_positive_slope - slope_15m
     in_bucket = bool(row.get("in_bucket_now"))
     drop = D(row.get("drop_from_high_f"))
     slope = D(row.get("slope_15m_f_per_min"))
@@ -120,6 +126,10 @@ def evaluate(row: dict[str, Any], args: argparse.Namespace) -> dict[str, Any] | 
         "lock_gate_bypassed": True,
         "control_lock_failures": control_failures,
         "control_lock_would_pass": not control_failures,
+        "control_minutes_margin": None if minutes_margin is None else str(minutes_margin),
+        "control_drop_margin_f": None if drop_margin is None else str(drop_margin),
+        "control_slope_margin_f_per_min": None if slope_margin is None else str(slope_margin),
+        "near_control_signal": len(control_failures) <= 1 and net > 0,
         "tournament_side": side,
         "tournament_probability_side": str(p_side),
         "tournament_probability_yes": str(p_yes),
