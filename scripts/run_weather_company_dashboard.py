@@ -40,6 +40,15 @@ def load_state(path: Path) -> dict:
         return {"traded_events": {}, "pending": []}
 
 
+def load_l2_books(path: Path) -> dict[str, dict]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    books = payload.get("books") if isinstance(payload, dict) else None
+    return books if isinstance(books, dict) else {}
+
+
 def decision_reason(*, traded: bool, pending: bool, lock_pass: bool, edge: Decimal, net_edge: Decimal,
                     ask: Decimal, min_edge: Decimal, price_floor: Decimal,
                     obs_age_min: Decimal | None) -> str:
@@ -90,6 +99,7 @@ def build_snapshot(args) -> dict:
         by_event.setdefault(c.event_id, []).append(c)
 
     state = load_state(args.state)
+    l2_books = load_l2_books(args.l2_latest)
     traded_events = state.get("traded_events", {}) or {}
     pending_events = {x.get("event_id") for x in state.get("pending", []) if isinstance(x, dict)}
     rows = []
@@ -167,6 +177,8 @@ def build_snapshot(args) -> dict:
             if not choices:
                 continue
             edge, net_edge, side, ask, p_side, fee = max(choices, key=lambda x: x[1])
+            l2 = l2_books.get(c.ticker, {})
+            l2_prefix = "yes" if side == "YES" else "no"
             item = {
                 "snapshot_time": now.isoformat(),
                 "event_id": event_id,
@@ -202,6 +214,15 @@ def build_snapshot(args) -> dict:
                 "no_bid": None if c.no_bid is None else str(c.no_bid),
                 "no_ask": None if c.no_ask is None else str(c.no_ask),
                 "in_bucket_now": in_bucket,
+                "l2_available": bool(l2),
+                "l2_best_bid": l2.get(f"{l2_prefix}_best_bid"),
+                "l2_best_ask": l2.get(f"{l2_prefix}_best_ask"),
+                "l2_spread": l2.get(f"{l2_prefix}_spread"),
+                "l2_bid_depth_top5": l2.get(f"{l2_prefix}_bid_depth_top5"),
+                "l2_ask_depth_top5": l2.get(f"{l2_prefix}_ask_depth_top5"),
+                "l2_buy_vwap_1": l2.get(f"{l2_prefix}_buy_vwap_1"),
+                "l2_buy_vwap_5": l2.get(f"{l2_prefix}_buy_vwap_5"),
+                "l2_sequence": l2.get("sequence"),
                 "model_status": "PROVISIONAL_UNCALIBRATED_WEATHER_COMPANY_FORWARD_PAPER",
                 "live_order_submission": False,
             }
@@ -283,6 +304,8 @@ def write_outputs(args, snap: dict) -> None:
         "minutes_to_settlement_end", "minutes_since_high", "drop_from_high_f", "slope_15m_f_per_min", "lock_gate_pass",
         "side", "model_probability_side", "model_probability_yes", "yes_bid", "yes_ask", "no_bid", "no_ask", "entry_ask",
         "gross_edge", "estimated_taker_fee_per_contract", "net_edge_after_fee", "in_bucket_now",
+        "l2_available", "l2_best_bid", "l2_best_ask", "l2_spread", "l2_bid_depth_top5",
+        "l2_ask_depth_top5", "l2_buy_vwap_1", "l2_buy_vwap_5", "l2_sequence",
     ]
     args.contract_csv_output.parent.mkdir(parents=True, exist_ok=True)
     ctmp = args.contract_csv_output.with_suffix(args.contract_csv_output.suffix + ".tmp")
@@ -319,6 +342,7 @@ def main() -> int:
     p = argparse.ArgumentParser(description="Live read-only dashboard and snapshot recorder for Weather Company paper trading")
     p.add_argument("--series", default=",".join(paper.SERIES_STATION))
     p.add_argument("--state", type=Path, default=Path("/data/weather/live/weather_company_paper_state.json"))
+    p.add_argument("--l2-latest", type=Path, default=Path("/data/weather/live/kalshi_l2_latest.json"))
     p.add_argument("--json-output", type=Path, default=Path("/data/weather/live/weather_company_dashboard.json"))
     p.add_argument("--csv-output", type=Path, default=Path("/data/weather/live/weather_company_dashboard.csv"))
     p.add_argument("--contract-csv-output", type=Path, default=Path("/data/weather/live/weather_company_contract_dashboard.csv"))
