@@ -4,7 +4,7 @@ import argparse
 import json
 import time
 from collections import Counter
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -51,6 +51,7 @@ def main() -> int:
     p.add_argument("--series", default=",".join(DEFAULT_SERIES))
     p.add_argument("--start-date", type=date.fromisoformat, default=date(2026, 1, 1))
     p.add_argument("--end-date", type=date.fromisoformat, default=None)
+    p.add_argument("--recent-only", action="store_true", help="Use only the live /markets tier, scoped to the requested settled-date window. Best for recent manual-validation datasets.")
     p.add_argument("--market-jsonl", type=Path, default=Path("/data/weather/raw/kalshi/market_metadata/kalshi_weather_historical_bulk.jsonl"))
     p.add_argument("--event-jsonl", type=Path, default=Path("/data/weather/raw/kalshi/market_metadata/kalshi_weather_events_bulk.jsonl"))
     p.add_argument("--series-jsonl", type=Path, default=Path("/data/weather/raw/kalshi/market_metadata/kalshi_weather_series.jsonl"))
@@ -69,13 +70,24 @@ def main() -> int:
             for series in series_ids:
                 source_counts: Counter[str] = Counter()
                 pages = 0
-                # Kalshi partitions settled markets between the live and historical APIs.
-                # Recent settled markets (roughly the rolling live window) are absent from
-                # /historical/markets, so query BOTH tiers and de-duplicate by ticker.
-                for endpoint, source_name in (("/markets", "live"), ("/historical/markets", "historical")):
+                # Recent validation should stay on the live tier and use settlement-time
+                # bounds. Historical backfills query both tiers. Exclude multivariate combos
+                # so a recurring-series request cannot explode into unrelated combo markets.
+                sources = (("/markets", "live"),) if args.recent_only else (("/markets", "live"), ("/historical/markets", "historical"))
+                for endpoint, source_name in sources:
                     cursor = ""
                     while True:
-                        params: dict[str, Any] = {"limit": 1000, "series_ticker": series}
+                        params: dict[str, Any] = {"limit": 1000, "series_ticker": series, "mve_filter": "exclude"}
+                        if source_name == "live":
+                            params["status"] = "settled"
+                            # Settlement timestamps are UTC while weather settlement dates are
+                            # station-local/LST. Use a two-day pad, then apply the authoritative
+                            # resolved settlement-date filter below.
+                            start_utc = datetime.combine(args.start_date - timedelta(days=2), datetime.min.time(), tzinfo=timezone.utc)
+                            params["min_settled_ts"] = int(start_utc.timestamp())
+                            if args.end_date:
+                                end_utc = datetime.combine(args.end_date + timedelta(days=2), datetime.max.time(), tzinfo=timezone.utc)
+                                params["max_settled_ts"] = int(end_utc.timestamp())
                         if cursor:
                             params["cursor"] = cursor
                         payload = get_json(client, endpoint, params)
