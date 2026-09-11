@@ -10,7 +10,7 @@ from typing import Iterable, Iterator, Optional
 import httpx
 
 PMXT_HOSTED_BASE = "https://api.pmxt.dev/api"
-PMXT_KALSHI_ARCHIVE_BASE = "https://r2kalshi.pmxt.dev"
+PMXT_KALSHI_ARCHIVE_BASE = os.getenv("PMXT_KALSHI_ARCHIVE_BASE", "https://archive.pmxt.dev/Kalshi").rstrip("/")
 
 
 @dataclass(frozen=True)
