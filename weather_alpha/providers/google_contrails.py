@@ -35,6 +35,7 @@ class ContrailForecastPoint:
     max_cfi: float | None
     mean_cfi: float | None
     max_persistent_formation_probability: float | None
+    max_expected_effective_energy_forcing: float | None
     max_nominal_cocip_effective_energy_forcing: float | None
     peak_flight_level: int | None
 
@@ -184,6 +185,7 @@ class GoogleContrailsClient:
         for variable in (
             "contrails",
             "persistent_formation_probability",
+            "expected_effective_energy_forcing",
             "nominal_cocip_effective_energy_forcing",
         ):
             params.append(("data", variable))
@@ -205,7 +207,12 @@ class GoogleContrailsClient:
                     if "persistent_formation_probability" in point
                     else np.array([])
                 )
-                eef = (
+                expected_eef = (
+                    np.asarray(point["expected_effective_energy_forcing"].values, dtype=float)
+                    if "expected_effective_energy_forcing" in point
+                    else np.array([])
+                )
+                nominal_eef = (
                     np.asarray(point["nominal_cocip_effective_energy_forcing"].values, dtype=float)
                     if "nominal_cocip_effective_energy_forcing" in point
                     else np.array([])
@@ -213,7 +220,16 @@ class GoogleContrailsClient:
                 max_cfi = float(np.nanmax(cfi)) if cfi.size and np.isfinite(cfi).any() else None
                 mean_cfi = float(np.nanmean(cfi)) if cfi.size and np.isfinite(cfi).any() else None
                 max_prob = float(np.nanmax(prob)) if prob.size and np.isfinite(prob).any() else None
-                max_eef = float(np.nanmax(eef)) if eef.size and np.isfinite(eef).any() else None
+                max_expected_eef = (
+                    float(np.nanmax(expected_eef))
+                    if expected_eef.size and np.isfinite(expected_eef).any()
+                    else None
+                )
+                max_nominal_eef = (
+                    float(np.nanmax(nominal_eef))
+                    if nominal_eef.size and np.isfinite(nominal_eef).any()
+                    else None
+                )
                 peak_fl = None
                 if cfi.size and "flight_level" in point.coords and np.isfinite(cfi).any():
                     values = np.asarray(point["contrails"].squeeze().values, dtype=float)
@@ -235,6 +251,7 @@ class GoogleContrailsClient:
             max_cfi=max_cfi,
             mean_cfi=mean_cfi,
             max_persistent_formation_probability=max_prob,
-            max_nominal_cocip_effective_energy_forcing=max_eef,
+            max_expected_effective_energy_forcing=max_expected_eef,
+            max_nominal_cocip_effective_energy_forcing=max_nominal_eef,
             peak_flight_level=peak_fl,
         )
