@@ -267,21 +267,25 @@ class GoogleContrailsClient:
             path = Path(fh.name)
         try:
             with xr.open_dataset(path) as ds:
-                point = ds.sel(latitude=latitude, longitude=longitude, method="nearest")
-                cfi = np.asarray(point["contrails"].values, dtype=float) if "contrails" in point else np.array([])
+                # The API response already contains only the requested bbox.
+                # Score the whole local region rather than only the grid cell
+                # nearest the city/station; an observed contrail can easily be
+                # tens of kilometres away while still affecting the local sky.
+                region = ds
+                cfi = np.asarray(region["contrails"].values, dtype=float) if "contrails" in region else np.array([])
                 prob = (
-                    np.asarray(point["persistent_formation_probability"].values, dtype=float)
-                    if "persistent_formation_probability" in point
+                    np.asarray(region["persistent_formation_probability"].values, dtype=float)
+                    if "persistent_formation_probability" in region
                     else np.array([])
                 )
                 expected_eef = (
-                    np.asarray(point["expected_effective_energy_forcing"].values, dtype=float)
-                    if "expected_effective_energy_forcing" in point
+                    np.asarray(region["expected_effective_energy_forcing"].values, dtype=float)
+                    if "expected_effective_energy_forcing" in region
                     else np.array([])
                 )
                 nominal_eef = (
-                    np.asarray(point["nominal_cocip_effective_energy_forcing"].values, dtype=float)
-                    if "nominal_cocip_effective_energy_forcing" in point
+                    np.asarray(region["nominal_cocip_effective_energy_forcing"].values, dtype=float)
+                    if "nominal_cocip_effective_energy_forcing" in region
                     else np.array([])
                 )
                 max_cfi = float(np.nanmax(cfi)) if cfi.size and np.isfinite(cfi).any() else None
@@ -298,11 +302,14 @@ class GoogleContrailsClient:
                     else None
                 )
                 peak_fl = None
-                if cfi.size and "flight_level" in point.coords and np.isfinite(cfi).any():
-                    values = np.asarray(point["contrails"].squeeze().values, dtype=float)
-                    levels = np.asarray(point["flight_level"].values)
-                    if values.ndim == 1 and len(values) == len(levels):
-                        peak_fl = int(levels[int(np.nanargmax(values))])
+                if cfi.size and "flight_level" in region.coords and np.isfinite(cfi).any():
+                    da = region["contrails"]
+                    reduce_dims = [d for d in da.dims if d != "flight_level"]
+                    by_level = da.max(dim=reduce_dims, skipna=True) if reduce_dims else da
+                    vals = np.asarray(by_level.values, dtype=float).reshape(-1)
+                    levels = np.asarray(region["flight_level"].values).reshape(-1)
+                    if vals.size == levels.size and np.isfinite(vals).any():
+                        peak_fl = int(levels[int(np.nanargmax(vals))])
                 ref = None
                 if "forecast_reference_time" in ds:
                     raw = np.asarray(ds["forecast_reference_time"].values).reshape(-1)[0]
