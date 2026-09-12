@@ -51,7 +51,7 @@ def send_telegram(text: str) -> None:
         raise RuntimeError(f"Telegram API error: {payload}")
 
 
-def alert_text(name: str, station: str | None, det, forecast, alert: bool) -> str:
+def alert_text(name: str, station: str | None, det, forecast, attribution, alert: bool) -> str:
     nearest = "n/a" if det.nearest_detection_km is None else f"{det.nearest_detection_km:.0f} km"
     cfi = "n/a" if forecast.max_cfi is None else f"{forecast.max_cfi:.2f}/4"
     probability = (
@@ -64,14 +64,24 @@ def alert_text(name: str, station: str | None, det, forecast, alert: bool) -> st
         f"{icon} CONTRAIL WEATHER SIGNAL — {name}",
         f"Station: {station or 'n/a'}",
         f"Google detections: {det.detection_count}",
-        f"Detected line length: {det.total_length_km:.0f} km",
+        f"Detected line length (raw intersecting features): {det.total_length_km:.0f} km",
         f"Nearest detected line: {nearest}",
+        f"Peak detection hour: {det.peak_hour_count} at {det.peak_hour_time or 'n/a'}",
         f"Current max CFI: {cfi}",
         f"Persistent-formation probability: {probability}",
     ]
+    if attribution is not None:
+        if attribution.flight_attributed_length_km is not None:
+            lines.append(
+                f"Attributed in-bounds contrail flight length: {attribution.flight_attributed_length_km:.0f} km"
+            )
+        if attribution.effective_energy_forcing_joules is not None:
+            lines.append(
+                f"Observed attributed effective energy forcing: {attribution.effective_energy_forcing_joules:.2e} J"
+            )
     if forecast.max_expected_effective_energy_forcing is not None:
         lines.append(
-            f"Expected energy forcing: {forecast.max_expected_effective_energy_forcing:.2e} J/m"
+            f"Current forecast expected energy forcing: {forecast.max_expected_effective_energy_forcing:.2e} J/m"
         )
     if forecast.peak_flight_level is not None:
         lines.append(f"Peak flight level: FL{forecast.peak_flight_level}")
@@ -99,8 +109,17 @@ async def scan_one(
 
     det = await client.detection_summary(start, end, lat, lon, radius_km, satellite)
 
-    # Forecast grids are hourly. Round down so the request is deterministic.
-    forecast_time = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+    attribution = None
+    attribution_error = None
+    try:
+        attribution = await client.attribution_metrics(start, end, lat, lon, radius_km)
+    except Exception as exc:
+        attribution_error = f"{type(exc).__name__}: {exc}"
+
+    # Forecast grids are hourly. For a fixed historical window, evaluate the
+    # forecast at the window end; otherwise evaluate the current UTC hour.
+    forecast_anchor = end if fixed_end is not None else datetime.now(timezone.utc)
+    forecast_time = forecast_anchor.replace(minute=0, second=0, microsecond=0)
     forecast = await client.forecast_point(forecast_time, lat, lon)
 
     alert = (
@@ -123,6 +142,22 @@ async def scan_one(
             None if det.nearest_detection_km is None else round(det.nearest_detection_km, 3)
         ),
         "satellite_counts": det.satellite_counts,
+        "unique_detection_frames": det.unique_detection_frames,
+        "first_detection_time": None if det.first_detection_time is None else det.first_detection_time.isoformat(),
+        "last_detection_time": None if det.last_detection_time is None else det.last_detection_time.isoformat(),
+        "hourly_counts": det.hourly_counts,
+        "peak_hour_time": det.peak_hour_time,
+        "peak_hour_count": det.peak_hour_count,
+        "attribution_metrics_error": attribution_error,
+        "flight_attributed_length_km": (
+            None if attribution is None else attribution.flight_attributed_length_km
+        ),
+        "observed_effective_energy_forcing_joules": (
+            None if attribution is None else attribution.effective_energy_forcing_joules
+        ),
+        "rf_erf_conversion_factor": (
+            None if attribution is None else attribution.rf_erf_conversion_factor
+        ),
         "max_cfi": forecast.max_cfi,
         "mean_cfi": forecast.mean_cfi,
         "max_persistent_formation_probability": forecast.max_persistent_formation_probability,
@@ -136,6 +171,7 @@ async def scan_one(
             loc.get("settlement_station"),
             det,
             forecast,
+            attribution,
             alert,
         ),
     }
