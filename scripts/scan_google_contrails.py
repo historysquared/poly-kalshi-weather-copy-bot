@@ -111,10 +111,18 @@ async def scan_one(
 
     attribution = None
     attribution_error = None
+    attribution_status = "available"
     try:
         attribution = await client.attribution_metrics(start, end, lat, lon, radius_km)
     except Exception as exc:
         attribution_error = f"{type(exc).__name__}: {exc}"
+        lower_error = attribution_error.lower()
+        if "specified time range is not supported" in lower_error or "out_of_range" in lower_error:
+            attribution_status = "unavailable_for_requested_time_range"
+        elif "permission" in lower_error or "forbidden" in lower_error:
+            attribution_status = "access_required"
+        else:
+            attribution_status = "error"
 
     # Evaluate forecast conditions at the observed detection peak hour when
     # available. This is more useful than asking only about conditions now,
@@ -152,6 +160,7 @@ async def scan_one(
         "hourly_counts": det.hourly_counts,
         "peak_hour_time": det.peak_hour_time,
         "peak_hour_count": det.peak_hour_count,
+        "attribution_status": attribution_status,
         "attribution_metrics_error": attribution_error,
         "flight_attributed_length_km": (
             None if attribution is None else attribution.flight_attributed_length_km
