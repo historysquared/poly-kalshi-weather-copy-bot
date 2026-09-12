@@ -69,9 +69,13 @@ def alert_text(name: str, station: str | None, det, forecast, alert: bool) -> st
         f"Current max CFI: {cfi}",
         f"Persistent-formation probability: {probability}",
     ]
+    if forecast.max_expected_effective_energy_forcing is not None:
+        lines.append(
+            f"Expected energy forcing: {forecast.max_expected_effective_energy_forcing:.2e} J/m"
+        )
     if forecast.peak_flight_level is not None:
         lines.append(f"Peak flight level: FL{forecast.peak_flight_level}")
-    lines.append("CFI measures contrail-warming severity, not surface temperature degrees.")
+    lines.append("CFI / energy forcing are not surface-temperature degrees.")
     return "\n".join(lines)
 
 
@@ -122,6 +126,7 @@ async def scan_one(
         "max_cfi": forecast.max_cfi,
         "mean_cfi": forecast.mean_cfi,
         "max_persistent_formation_probability": forecast.max_persistent_formation_probability,
+        "max_expected_effective_energy_forcing": forecast.max_expected_effective_energy_forcing,
         "max_nominal_cocip_effective_energy_forcing": (
             forecast.max_nominal_cocip_effective_energy_forcing
         ),
