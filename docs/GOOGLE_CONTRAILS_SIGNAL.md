@@ -7,7 +7,7 @@ Research-only integration of the Google Contrails API v2 into Weather Alpha Lab.
 - `detections`: Google-produced satellite-observed linear contrail detections (GeoJSON LineStrings).
 - `contrails`: Contrail Forcing Index (CFI), a continuous 0–4 contrail-warming severity index.
 - `persistent_formation_probability`: probability (0–100; typically much lower in practice) that persistent contrails form at a forecast grid point / flight level.
-- `nominal_cocip_effective_energy_forcing`: CoCiP energy-forcing estimate.
+- `expected_effective_energy_forcing`: Google’s formation-probability-weighted effective energy forcing (J/m), the quantity underlying CFI.\n- `nominal_cocip_effective_energy_forcing`: the nominal CoCiP energy-forcing estimate before that probability weighting.
 
 **None of these is a forecast that a city's surface temperature will change by X °F or °C.** The trading research objective is to estimate that relationship empirically by joining these features to station observations and pre-event weather-model forecast errors.
 
