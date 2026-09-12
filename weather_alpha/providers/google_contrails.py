@@ -24,6 +24,19 @@ class ContrailDetectionSummary:
     max_length_km: float
     nearest_detection_km: float | None
     satellite_counts: dict[str, int]
+    unique_detection_frames: int
+    first_detection_time: datetime | None
+    last_detection_time: datetime | None
+    hourly_counts: dict[str, int]
+    peak_hour_time: str | None
+    peak_hour_count: int
+
+
+@dataclass(frozen=True)
+class ContrailAttributionMetrics:
+    flight_attributed_length_km: float | None
+    effective_energy_forcing_joules: float | None
+    rf_erf_conversion_factor: float | None
 
 
 @dataclass(frozen=True)
@@ -142,6 +155,8 @@ class GoogleContrailsClient:
         lengths: list[float] = []
         nearest: float | None = None
         satellite_counts: dict[str, int] = {}
+        detection_times: list[datetime] = []
+        hourly_counts: dict[str, int] = {}
         for feature in payload.get("features", []) if isinstance(payload, dict) else []:
             if not isinstance(feature, dict):
                 continue
@@ -155,9 +170,20 @@ class GoogleContrailsClient:
                 if isinstance(point, list) and len(point) >= 2:
                     d = self.haversine_km(latitude, longitude, float(point[1]), float(point[0]))
                     nearest = d if nearest is None else min(nearest, d)
-            origin = str((feature.get("properties") or {}).get("satellite_origin") or "unknown")
+            props = feature.get("properties") or {}
+            origin = str(props.get("satellite_origin") or "unknown")
             satellite_counts[origin] = satellite_counts.get(origin, 0) + 1
+            raw_time = props.get("time")
+            if raw_time:
+                try:
+                    dt = datetime.fromisoformat(str(raw_time).replace("Z", "+00:00")).astimezone(timezone.utc)
+                    detection_times.append(dt)
+                    hour = dt.replace(minute=0, second=0, microsecond=0).isoformat()
+                    hourly_counts[hour] = hourly_counts.get(hour, 0) + 1
+                except ValueError:
+                    pass
 
+        peak_hour_time = max(hourly_counts, key=hourly_counts.get) if hourly_counts else None
         return ContrailDetectionSummary(
             start_time=start,
             end_time=end,
@@ -169,6 +195,47 @@ class GoogleContrailsClient:
             max_length_km=float(max(lengths, default=0.0)),
             nearest_detection_km=nearest,
             satellite_counts=satellite_counts,
+            unique_detection_frames=len(set(detection_times)),
+            first_detection_time=min(detection_times) if detection_times else None,
+            last_detection_time=max(detection_times) if detection_times else None,
+            hourly_counts=dict(sorted(hourly_counts.items())),
+            peak_hour_time=peak_hour_time,
+            peak_hour_count=hourly_counts.get(peak_hour_time, 0) if peak_hour_time else 0,
+        )
+
+    async def attribution_metrics(
+        self,
+        start_time: datetime,
+        end_time: datetime,
+        latitude: float,
+        longitude: float,
+        radius_km: float = 150.0,
+        view: str = "ATTRIBUTION_VIEW_OBSERVATION",
+    ) -> ContrailAttributionMetrics:
+        start = self._utc(start_time)
+        end = self._utc(end_time)
+        params: list[tuple[str, str]] = [
+            ("startTime", self._iso(start)),
+            ("endTime", self._iso(end)),
+            ("view", view),
+        ]
+        params.extend(("bounds", value) for value in self.bounds_square(latitude, longitude, radius_km))
+        async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
+            response = await client.get(
+                f"{self.BASE}/attributions:GetAttributionMetrics",
+                params=params,
+                headers=self.headers,
+            )
+            response.raise_for_status()
+            payload = response.json()
+
+        length_m = payload.get("flight_attributed_length_metres", payload.get("flightAttributedLengthMetres"))
+        forcing_j = payload.get("effective_energy_forcing_joules", payload.get("effectiveEnergyForcingJoules"))
+        ratio = payload.get("rf_erf_conversion_factor", payload.get("rfErfConversionFactor"))
+        return ContrailAttributionMetrics(
+            flight_attributed_length_km=None if length_m is None else float(length_m) / 1000.0,
+            effective_energy_forcing_joules=None if forcing_j is None else float(forcing_j),
+            rf_erf_conversion_factor=None if ratio is None else float(ratio),
         )
 
     async def forecast_point(
