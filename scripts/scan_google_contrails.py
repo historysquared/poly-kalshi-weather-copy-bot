@@ -116,9 +116,13 @@ async def scan_one(
     except Exception as exc:
         attribution_error = f"{type(exc).__name__}: {exc}"
 
-    # Forecast grids are hourly. For a fixed historical window, evaluate the
-    # forecast at the window end; otherwise evaluate the current UTC hour.
-    forecast_anchor = end if fixed_end is not None else datetime.now(timezone.utc)
+    # Evaluate forecast conditions at the observed detection peak hour when
+    # available. This is more useful than asking only about conditions now,
+    # which may be long after the bloom dissipated.
+    if det.peak_hour_time:
+        forecast_anchor = datetime.fromisoformat(det.peak_hour_time)
+    else:
+        forecast_anchor = end if fixed_end is not None else datetime.now(timezone.utc)
     forecast_time = forecast_anchor.replace(minute=0, second=0, microsecond=0)
     forecast = await client.forecast_point(forecast_time, lat, lon)
 
@@ -158,6 +162,7 @@ async def scan_one(
         "rf_erf_conversion_factor": (
             None if attribution is None else attribution.rf_erf_conversion_factor
         ),
+        "forecast_valid_time": forecast.valid_time.isoformat(),
         "max_cfi": forecast.max_cfi,
         "mean_cfi": forecast.mean_cfi,
         "max_persistent_formation_probability": forecast.max_persistent_formation_probability,
