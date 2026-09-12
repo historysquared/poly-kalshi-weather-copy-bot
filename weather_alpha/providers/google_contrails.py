@@ -226,7 +226,13 @@ class GoogleContrailsClient:
                 params=params,
                 headers=self.headers,
             )
-            response.raise_for_status()
+            if response.is_error:
+                detail = response.text.strip().replace("\n", " ")
+                if len(detail) > 1200:
+                    detail = detail[:1200] + "..."
+                raise RuntimeError(
+                    f"Google attribution metrics HTTP {response.status_code}: {detail}"
+                )
             payload = response.json()
 
         length_m = payload.get("flight_attributed_length_metres", payload.get("flightAttributedLengthMetres"))
