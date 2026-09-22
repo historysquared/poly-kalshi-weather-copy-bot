@@ -56,6 +56,17 @@ def baseline_percentiles(path: Path, current: dict[str, Any], current_start_loca
     if not isinstance(rows, list):
         return {"status": "baseline_invalid", "path": str(path)}
 
+    baseline_start = payload.get("start_local")
+    baseline_end = payload.get("end_local")
+    if baseline_start != current_start_local or baseline_end != current_end_local:
+        return {
+            "status": "window_mismatch",
+            "path": str(path),
+            "baseline_window": [baseline_start, baseline_end],
+            "current_window": [current_start_local, current_end_local],
+            "note": "Percentiles require identical local-time windows.",
+        }
+
     pairs = {
         "detection_count": current.get("detection_count"),
         "unique_detection_frames": current.get("unique_detection_frames"),
@@ -64,7 +75,7 @@ def baseline_percentiles(path: Path, current: dict[str, Any], current_start_loca
     }
     out: dict[str, Any] = {"status": "ok", "baseline_n": 0, "metrics": {}}
     for metric, target in pairs.items():
-        source_key = "total_length_km_raw" if metric == "total_length_km" else metric
+        source_key = "total_length_km_in_bounds" if metric == "total_length_km" else metric
         vals = []
         for row in rows:
             if not isinstance(row, dict) or row.get("is_target"):
@@ -91,7 +102,7 @@ async def amain() -> int:
     ap.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     ap.add_argument("--baseline", type=Path, default=DEFAULT_BASELINE)
     ap.add_argument("--radius-km", type=float, default=150.0)
-    ap.add_argument("--forecast-radius-km", type=float, default=35.0)
+    ap.add_argument("--forecast-radius-km", type=float, default=150.0)
     ap.add_argument("--timeout", type=float, default=120.0)
     args = ap.parse_args()
 
@@ -137,7 +148,9 @@ async def amain() -> int:
         "window_end_utc": det.end_time.isoformat(),
         "detection_count": det.detection_count,
         "unique_detection_frames": det.unique_detection_frames,
-        "total_length_km": round(det.total_length_km, 3),
+        "total_length_km": round(det.in_bounds_length_km, 3),
+        "raw_intersecting_line_length_km": round(det.total_length_km, 3),
+        "line_length_metric_version": "clipped_bbox_v1",
         "max_length_km": round(det.max_length_km, 3),
         "nearest_detection_km": None if det.nearest_detection_km is None else round(det.nearest_detection_km, 3),
         "first_detection_time": None if det.first_detection_time is None else det.first_detection_time.isoformat(),
@@ -154,7 +167,11 @@ async def amain() -> int:
         "forecast_error": forecast_error,
         "research_note": "CFI and energy forcing are contrail metrics, not surface-temperature changes.",
     }
-    current_start_local = local_now.replace(hour=0, minute=0, second=0, microsecond=0).strftime("%H:%M")\n    current_end_local = local_now.strftime("%H:%M")\n    current["baseline"] = baseline_percentiles(args.baseline, current, current_start_local, current_end_local)
+    current_start_local = local_now.replace(hour=0, minute=0, second=0, microsecond=0).strftime("%H:%M")
+    current_end_local = local_now.strftime("%H:%M")
+    current["baseline"] = baseline_percentiles(
+        args.baseline, current, current_start_local, current_end_local
+    )
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     tmp = args.output.with_suffix(args.output.suffix + ".tmp")
@@ -162,7 +179,10 @@ async def amain() -> int:
     tmp.replace(args.output)
 
     print(f"STAYTON CONTRAILS — {current['local_date']} through {local_now.strftime('%I:%M %p %Z')}")
-    print(f"detections={det.detection_count} frames={det.unique_detection_frames} total_line_km={det.total_length_km:.0f}")
+    print(
+        f"detections={det.detection_count} frames={det.unique_detection_frames} "
+        f"in_bounds_line_km={det.in_bounds_length_km:.0f} raw_line_km={det.total_length_km:.0f}"
+    )
     nearest = "n/a" if det.nearest_detection_km is None else f"{det.nearest_detection_km:.1f} km"
     print(f"nearest={nearest} peak_hour={det.peak_hour_time or 'n/a'} peak_count={det.peak_hour_count}")
     if forecast is not None:
