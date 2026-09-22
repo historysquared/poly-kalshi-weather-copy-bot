@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh Stayton contrail snapshot hourly
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+RandomizedDelaySec=60
+Unit=weather-contrails-stayton.service
+
+[Install]
+WantedBy=timers.target
