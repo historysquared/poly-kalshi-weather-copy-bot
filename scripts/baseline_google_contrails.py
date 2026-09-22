@@ -123,6 +123,7 @@ async def fetch_day(
                 "peak_hour_count": summary.peak_hour_count,
                 "peak_hour_time": summary.peak_hour_time,
                 "active_span_minutes": active_span_minutes,
+                "total_length_km_in_bounds": summary.in_bounds_length_km,
                 "total_length_km_raw": summary.total_length_km,
                 "nearest_detection_km": summary.nearest_detection_km,
             }
@@ -230,7 +231,7 @@ async def main_async() -> int:
         "unique_detection_frames",
         "peak_hour_count",
         "active_span_minutes",
-        "total_length_km_raw",
+        "total_length_km_in_bounds",
     ]
     rankings: dict[str, Any] = {}
     for metric in metrics:
