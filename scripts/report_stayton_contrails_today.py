@@ -44,7 +44,7 @@ def local_day_window(tz_name: str, now_utc: datetime) -> tuple[datetime, datetim
     return local_start.astimezone(timezone.utc), now_utc, local_now
 
 
-def baseline_percentiles(path: Path, current: dict[str, Any]) -> dict[str, Any]:
+def baseline_percentiles(path: Path, current: dict[str, Any], current_start_local: str, current_end_local: str) -> dict[str, Any]:
     if not path.exists():
         return {"status": "baseline_missing", "path": str(path)}
     try:
@@ -154,7 +154,7 @@ async def amain() -> int:
         "forecast_error": forecast_error,
         "research_note": "CFI and energy forcing are contrail metrics, not surface-temperature changes.",
     }
-    current["baseline"] = baseline_percentiles(args.baseline, current)
+    current_start_local = local_now.replace(hour=0, minute=0, second=0, microsecond=0).strftime("%H:%M")\n    current_end_local = local_now.strftime("%H:%M")\n    current["baseline"] = baseline_percentiles(args.baseline, current, current_start_local, current_end_local)
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     tmp = args.output.with_suffix(args.output.suffix + ".tmp")
