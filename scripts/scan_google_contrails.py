@@ -63,8 +63,8 @@ def alert_text(name: str, station: str | None, det, forecast, attribution, alert
     lines = [
         f"{icon} CONTRAIL WEATHER SIGNAL — {name}",
         f"Station: {station or 'n/a'}",
-        f"Google detections: {det.detection_count}",
-        f"Detected line length (raw intersecting features): {det.total_length_km:.0f} km",
+        f"Google LineString feature detections: {det.detection_count}",
+        f"Raw intersecting-feature line length (not clipped to bounds): {det.total_length_km:.0f} km",
         f"Nearest detected line: {nearest}",
         f"Peak detection hour: {det.peak_hour_count} at {det.peak_hour_time or 'n/a'}",
         f"Current max CFI: {cfi}",
