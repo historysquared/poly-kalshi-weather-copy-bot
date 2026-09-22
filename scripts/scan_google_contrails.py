@@ -64,7 +64,8 @@ def alert_text(name: str, station: str | None, det, forecast, attribution, alert
         f"{icon} CONTRAIL WEATHER SIGNAL — {name}",
         f"Station: {station or 'n/a'}",
         f"Google LineString feature detections: {det.detection_count}",
-        f"Raw intersecting-feature line length (not clipped to bounds): {det.total_length_km:.0f} km",
+        f"Detected line length inside query box: {det.in_bounds_length_km:.0f} km",
+        f"Raw full-feature line length (diagnostic only): {det.total_length_km:.0f} km",
         f"Nearest detected line: {nearest}",
         f"Peak detection hour: {det.peak_hour_count} at {det.peak_hour_time or 'n/a'}",
         f"Current max CFI: {cfi}",
@@ -111,18 +112,23 @@ async def scan_one(
 
     attribution = None
     attribution_error = None
-    attribution_status = "available"
-    try:
-        attribution = await client.attribution_metrics(start, end, lat, lon, radius_km)
-    except Exception as exc:
-        attribution_error = f"{type(exc).__name__}: {exc}"
-        lower_error = attribution_error.lower()
-        if "specified time range is not supported" in lower_error or "out_of_range" in lower_error:
-            attribution_status = "unavailable_for_requested_time_range"
-        elif "permission" in lower_error or "forbidden" in lower_error:
-            attribution_status = "access_required"
-        else:
-            attribution_status = "error"
+    # Attribution metrics are a historical product, not a reliable same-day feed.
+    # Keep live scans purely observational/forecast-based; only request attribution
+    # when the caller explicitly supplies a fixed historical window.
+    attribution_status = "skipped_live_window"
+    if fixed_start is not None and fixed_end is not None:
+        attribution_status = "available"
+        try:
+            attribution = await client.attribution_metrics(start, end, lat, lon, radius_km)
+        except Exception as exc:
+            attribution_error = f"{type(exc).__name__}: {exc}"
+            lower_error = attribution_error.lower()
+            if "specified time range is not supported" in lower_error or "out_of_range" in lower_error:
+                attribution_status = "unavailable_for_requested_time_range"
+            elif "permission" in lower_error or "forbidden" in lower_error:
+                attribution_status = "access_required"
+            else:
+                attribution_status = "error"
 
     # Evaluate forecast conditions at the observed detection peak hour when
     # available. This is more useful than asking only about conditions now,
@@ -132,11 +138,23 @@ async def scan_one(
     else:
         forecast_anchor = end if fixed_end is not None else datetime.now(timezone.utc)
     forecast_time = forecast_anchor.replace(minute=0, second=0, microsecond=0)
-    forecast = await client.forecast_point(forecast_time, lat, lon)
+    # Use the same geographic radius as detections so observed and forecast
+    # metrics describe the same local market region.
+    forecast = await client.forecast_point(forecast_time, lat, lon, radius_km=radius_km)
+    forecast_model_has_signal = any(
+        (value or 0) > 0
+        for value in (
+            forecast.max_cfi,
+            forecast.max_persistent_formation_probability,
+            forecast.max_expected_effective_energy_forcing,
+            forecast.max_nominal_cocip_effective_energy_forcing,
+        )
+    )
+    forecast_observation_disagreement = det.detection_count > 0 and not forecast_model_has_signal
 
     alert = (
         det.detection_count >= min_count
-        or det.total_length_km >= min_length_km
+        or det.in_bounds_length_km >= min_length_km
         or (forecast.max_cfi or 0) >= min_cfi
     )
     return {
@@ -148,7 +166,9 @@ async def scan_one(
         "window_start": det.start_time.isoformat(),
         "window_end": det.end_time.isoformat(),
         "detection_count": det.detection_count,
-        "total_length_km": round(det.total_length_km, 3),
+        "total_length_km": round(det.in_bounds_length_km, 3),
+        "raw_intersecting_line_length_km": round(det.total_length_km, 3),
+        "line_length_metric_version": "clipped_bbox_v1",
         "max_length_km": round(det.max_length_km, 3),
         "nearest_detection_km": (
             None if det.nearest_detection_km is None else round(det.nearest_detection_km, 3)
@@ -172,6 +192,9 @@ async def scan_one(
             None if attribution is None else attribution.rf_erf_conversion_factor
         ),
         "forecast_valid_time": forecast.valid_time.isoformat(),
+        "forecast_reference_time": None if forecast.forecast_reference_time is None else forecast.forecast_reference_time.isoformat(),
+        "forecast_model_has_signal": forecast_model_has_signal,
+        "forecast_observation_disagreement": forecast_observation_disagreement,
         "max_cfi": forecast.max_cfi,
         "mean_cfi": forecast.mean_cfi,
         "max_persistent_formation_probability": forecast.max_persistent_formation_probability,
