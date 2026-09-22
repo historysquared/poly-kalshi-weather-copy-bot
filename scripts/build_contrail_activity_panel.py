@@ -16,14 +16,15 @@ import yaml
 
 from weather_alpha.providers.google_contrails import GoogleContrailsClient
 
-DEFAULT_LOCATIONS = [
-    "stayton_or",
-    "new_york_city",
-    "chicago",
-    "miami",
-    "los_angeles",
-    "san_francisco",
-]
+def default_locations(cfg: dict[str, dict[str, Any]]) -> list[str]:
+    keys = [
+        key
+        for key, loc in cfg.items()
+        if any(v in (loc.get("venues") or []) for v in ("kalshi", "polymarket_us"))
+    ]
+    if "stayton_or" in cfg and "stayton_or" not in keys:
+        keys.insert(0, "stayton_or")
+    return keys
 
 
 def percentile(values: list[float], target: float) -> float | None:
@@ -103,7 +104,7 @@ async def main() -> int:
     args = ap.parse_args()
 
     cfg = yaml.safe_load(args.config.read_text(encoding="utf-8"))["locations"]
-    keys = args.locations or DEFAULT_LOCATIONS
+    keys = args.locations or default_locations(cfg)
     missing = [k for k in keys if k not in cfg]
     if missing:
         raise SystemExit("unknown locations: " + ", ".join(missing))
@@ -168,31 +169,46 @@ async def main() -> int:
             "radius_km": args.radius_km,
             "baseline_days": args.days,
             "full_day_avg_count": mean(float(r["count"]) for r in full_rows),
-            "full_day_median_count": median(float(r["count"]) for r in full_rows),
-            "full_day_avg_frames": mean(float(r["frames"]) for r in full_rows),
             "today_local_time": local_now.isoformat(),
             "today_count": current["count"],
-            "today_frames": current["frames"],
-            "today_in_bounds_km": current["in_bounds_km"],
-            "today_nearest_km": current["nearest_km"],
-            "count_percentile": metrics["count"]["percentile"],
-            "frames_percentile": metrics["frames"]["percentile"],
-            "in_bounds_km_percentile": metrics["in_bounds_km"]["percentile"],
             "activity_percentile": (
                 median(component_percentiles) if component_percentiles else None
             ),
-            "count_robust_z": metrics["count"]["robust_z"],
+            # Keep component metrics in the saved research data, but do not
+            # clutter the human panel with them.
+            "_research": {
+                "full_day_median_count": median(float(r["count"]) for r in full_rows),
+                "full_day_avg_frames": mean(float(r["frames"]) for r in full_rows),
+                "today_frames": current["frames"],
+                "today_in_bounds_km": current["in_bounds_km"],
+                "today_nearest_km": current["nearest_km"],
+                "count_percentile": metrics["count"]["percentile"],
+                "frames_percentile": metrics["frames"]["percentile"],
+                "in_bounds_km_percentile": metrics["in_bounds_km"]["percentile"],
+                "count_robust_z": metrics["count"]["robust_z"],
+            },
         }
         rows.append(row)
-        print(json.dumps(row, sort_keys=True), flush=True)
+        print(
+            f"{row['name']}: today={row['today_count']} "
+            f"30d_avg={row['full_day_avg_count']:.1f} "
+            f"activity_pct={row['activity_percentile']:.1f}"
+        )
 
     args.output_json.parent.mkdir(parents=True, exist_ok=True)
     args.output_json.write_text(json.dumps(rows, indent=2, sort_keys=True) + "\n")
     args.output_csv.parent.mkdir(parents=True, exist_ok=True)
     with args.output_csv.open("w", newline="", encoding="utf-8") as fh:
-        writer = csv.DictWriter(fh, fieldnames=list(rows[0]))
+        fields = [
+            "name",
+            "station",
+            "today_count",
+            "full_day_avg_count",
+            "activity_percentile",
+        ]
+        writer = csv.DictWriter(fh, fieldnames=fields)
         writer.writeheader()
-        writer.writerows(rows)
+        writer.writerows({k: row[k] for k in fields} for row in rows)
     return 0
 
 
