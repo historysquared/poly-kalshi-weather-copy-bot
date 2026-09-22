@@ -21,6 +21,7 @@ class ContrailDetectionSummary:
     radius_km: float
     detection_count: int
     total_length_km: float
+    in_bounds_length_km: float
     max_length_km: float
     nearest_detection_km: float | None
     satellite_counts: dict[str, int]
@@ -123,6 +124,67 @@ class GoogleContrailsClient:
             total += cls.haversine_km(float(a[1]), float(a[0]), float(b[1]), float(b[0]))
         return total
 
+    @staticmethod
+    def _clip_segment_to_bbox(
+        a: list[float], b: list[float], bbox: list[float]
+    ) -> tuple[list[float], list[float]] | None:
+        """Clip a lon/lat segment to [west, south, east, north]."""
+        if len(a) < 2 or len(b) < 2:
+            return None
+        x0, y0 = float(a[0]), float(a[1])
+        x1, y1 = float(b[0]), float(b[1])
+        west, south, east, north = bbox
+        dx, dy = x1 - x0, y1 - y0
+        u0, u1 = 0.0, 1.0
+        for p, q in ((-dx, x0 - west), (dx, east - x0), (-dy, y0 - south), (dy, north - y0)):
+            if abs(p) < 1e-15:
+                if q < 0:
+                    return None
+                continue
+            t = q / p
+            if p < 0:
+                if t > u1:
+                    return None
+                u0 = max(u0, t)
+            else:
+                if t < u0:
+                    return None
+                u1 = min(u1, t)
+        if u0 > u1:
+            return None
+        return ([x0 + u0 * dx, y0 + u0 * dy], [x0 + u1 * dx, y0 + u1 * dy])
+
+    @classmethod
+    def line_length_in_bbox_km(cls, coords: list[list[float]], bbox: list[float]) -> float:
+        total = 0.0
+        for a, b in zip(coords, coords[1:]):
+            clipped = cls._clip_segment_to_bbox(a, b, bbox)
+            if clipped is None:
+                continue
+            c, d = clipped
+            total += cls.haversine_km(float(c[1]), float(c[0]), float(d[1]), float(d[0]))
+        return total
+
+    @staticmethod
+    def point_to_segment_km(
+        latitude: float, longitude: float, a: list[float], b: list[float]
+    ) -> float | None:
+        """Approximate local distance from a lat/lon point to a lon/lat segment."""
+        if len(a) < 2 or len(b) < 2:
+            return None
+        r = 6371.0088
+        cos_lat = max(0.15, math.cos(math.radians(latitude)))
+        ax = math.radians(float(a[0]) - longitude) * r * cos_lat
+        ay = math.radians(float(a[1]) - latitude) * r
+        bx = math.radians(float(b[0]) - longitude) * r * cos_lat
+        by = math.radians(float(b[1]) - latitude) * r
+        dx, dy = bx - ax, by - ay
+        denom = dx * dx + dy * dy
+        if denom <= 1e-15:
+            return math.hypot(ax, ay)
+        t = max(0.0, min(1.0, -(ax * dx + ay * dy) / denom))
+        return math.hypot(ax + t * dx, ay + t * dy)
+
     async def detection_summary(
         self,
         start_time: datetime,
@@ -153,6 +215,8 @@ class GoogleContrailsClient:
             payload = response.json()
 
         lengths: list[float] = []
+        in_bounds_lengths: list[float] = []
+        query_bbox = self.bbox(latitude, longitude, radius_km)
         nearest: float | None = None
         satellite_counts: dict[str, int] = {}
         detection_times: list[datetime] = []
@@ -166,9 +230,10 @@ class GoogleContrailsClient:
                 continue
             length = self.line_length_km(coords)
             lengths.append(length)
-            for point in coords:
-                if isinstance(point, list) and len(point) >= 2:
-                    d = self.haversine_km(latitude, longitude, float(point[1]), float(point[0]))
+            in_bounds_lengths.append(self.line_length_in_bbox_km(coords, query_bbox))
+            for a, b in zip(coords, coords[1:]):
+                d = self.point_to_segment_km(latitude, longitude, a, b)
+                if d is not None:
                     nearest = d if nearest is None else min(nearest, d)
             props = feature.get("properties") or {}
             origin = str(props.get("satellite_origin") or "unknown")
@@ -192,6 +257,7 @@ class GoogleContrailsClient:
             radius_km=radius_km,
             detection_count=len(lengths),
             total_length_km=float(sum(lengths)),
+            in_bounds_length_km=float(sum(in_bounds_lengths)),
             max_length_km=float(max(lengths, default=0.0)),
             nearest_detection_km=nearest,
             satellite_counts=satellite_counts,
@@ -250,7 +316,7 @@ class GoogleContrailsClient:
         latitude: float,
         longitude: float,
         radius_km: float = 35.0,
-        flight_levels: tuple[int, ...] = (300, 310, 320, 330, 340, 350, 360, 370, 380, 390, 400),
+        flight_levels: tuple[int, ...] = (270, 280, 290, 300, 310, 320, 330, 340, 350, 360, 370, 380, 390, 400, 410, 420, 430, 440),
     ) -> ContrailForecastPoint:
         params: list[tuple[str, str]] = [("time", self._iso(valid_time))]
         params.extend(("bbox", str(x)) for x in self.bbox(latitude, longitude, radius_km))
@@ -308,7 +374,7 @@ class GoogleContrailsClient:
                     else None
                 )
                 peak_fl = None
-                if cfi.size and "flight_level" in region.coords and np.isfinite(cfi).any():
+                if cfi.size and "flight_level" in region.coords and np.isfinite(cfi).any() and float(np.nanmax(cfi)) > 0:
                     da = region["contrails"]
                     reduce_dims = [d for d in da.dims if d != "flight_level"]
                     by_level = da.max(dim=reduce_dims, skipna=True) if reduce_dims else da
