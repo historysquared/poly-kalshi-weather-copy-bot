@@ -55,6 +55,14 @@ Telegram uses the repository's existing `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_
 
 Current default alert thresholds (5 detections, 150 km aggregate detected-line length, or CFI >=2) are exploratory and are not calibrated trading rules.
 
+## Important API semantics
+
+- Google `GetDetections` returns any detected LineString that intersects the requested polygon. The returned geometry is not guaranteed to be clipped to that polygon. The live scanner therefore reports **clipped in-bounds line length** as the local metric and preserves full-feature length only as a diagnostic.
+- `detection_count` counts returned LineStrings across satellite frames; it is not a count of unique physical contrails. `unique_detection_frames` is tracked separately.
+- `/v2/grids` is a **forecast** product. CFI, persistent-formation probability, and energy-forcing fields may be zero even when satellite detections later observe contrails. The scanner records this as `forecast_observation_disagreement` rather than treating the zero as an API failure.
+- Forecast grids now query all documented flight levels FL270-FL440 and use the same geographic radius as the detection query.
+- `GetAttributionMetrics` is treated as a historical attribution product. Same-day live scans do not call it; explicit historical `--start/--end` scans may request it.
+
 ## Trading integration path
 
 Do not translate CFI mechanically into degrees. Archive the pre-event model forecast, official station outcome, Google contrail features, satellite cloud/solar features, and contemporaneous market prices. Then estimate a station/horizon-specific residual such as:
