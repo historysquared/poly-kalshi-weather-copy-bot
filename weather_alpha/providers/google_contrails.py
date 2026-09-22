@@ -250,7 +250,7 @@ class GoogleContrailsClient:
         latitude: float,
         longitude: float,
         radius_km: float = 35.0,
-        flight_levels: tuple[int, ...] = (300, 310, 320, 330, 340, 350, 360, 370, 380, 390, 400),
+        flight_levels: tuple[int, ...] = (270, 280, 290, 300, 310, 320, 330, 340, 350, 360, 370, 380, 390, 400, 410, 420, 430, 440),
     ) -> ContrailForecastPoint:
         params: list[tuple[str, str]] = [("time", self._iso(valid_time))]
         params.extend(("bbox", str(x)) for x in self.bbox(latitude, longitude, radius_km))
