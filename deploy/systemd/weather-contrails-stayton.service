@@ -1,0 +1,9 @@
+[Unit]
+Description=Weather Alpha Stayton Contrails Snapshot
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/poly-kalshi-weather-copy-bot
+EnvironmentFile=/root/.weather-contrails.env
+ExecStart=/opt/poly-kalshi-weather-copy-bot/.venv/bin/python scripts/report_stayton_contrails_today.py
