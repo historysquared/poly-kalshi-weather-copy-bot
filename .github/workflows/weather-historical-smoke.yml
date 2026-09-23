@@ -1,0 +1,62 @@
+name: Weather Historical Smoke
+
+on:
+  push:
+    branches:
+      - codex/weather-backtest-tournament
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]'
+      - name: Tests
+        run: pytest -q
+      - name: Build one archived weather-only pmxt hour
+        run: |
+          python scripts/build_pmxt_weather_cache.py \
+            --start 2026-08-09T12:00Z \
+            --end 2026-08-09T13:00Z \
+            --refresh-manifest
+      - name: Inspect compact archive
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import pyarrow.parquet as pq
+          root=Path('data/weather/pmxt_v2/weather_only')
+          files=sorted(root.glob('*.parquet'))
+          total=0
+          print('files', len(files))
+          for p in files:
+              n=pq.ParquetFile(p).metadata.num_rows
+              total += n
+              print(p.name, n)
+          print('TOTAL_WEATHER_ROWS', total)
+          if total == 0:
+              raise SystemExit('no weather rows found in pmxt smoke window')
+          PY
+      - name: Replay blind NO latency grid
+        run: |
+          python scripts/backtest_pmxt_blind_no.py \
+            --min-events 1 \
+            --min-stations 1
+          echo '--- ranking ---'
+          cat research/results/pmxt_blind_no/ranking.csv
+      - name: Archive smoke inputs and results
+        uses: actions/upload-artifact@v4
+        with:
+          name: weather-historical-smoke
+          path: |
+            data/weather/metadata/polymarket_weather_markets.jsonl
+            data/weather/pmxt_v2/weather_only/*.parquet
+            research/results/pmxt_blind_no/*
+          retention-days: 7

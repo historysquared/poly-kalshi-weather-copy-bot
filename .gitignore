@@ -1,0 +1,18 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local secrets
+.env
+
+# Weather research data (never commit large/raw archives)
+data/weather/pmxt_v2/raw/
+data/weather/pmxt_v2/weather_only/
+data/weather/**/*.parquet
+data/weather/**/*.db
+data/weather/**/*.sqlite*
+
+# Backtest outputs can be regenerated
+results/
