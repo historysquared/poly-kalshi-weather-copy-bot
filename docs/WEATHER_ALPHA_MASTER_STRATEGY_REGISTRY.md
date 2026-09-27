@@ -195,6 +195,7 @@ Nothing in this registry is assumed to be true. Each item is a hypothesis until 
 | M20 | P2 | Dryline position predicts heat/humidity regime transitions | Plains markets |
 | M21 | P3 | Mesocyclone/CAPPI/TDS ideas | Mostly risk/QC unless specific edge proven |
 | M22 | P3 | Local SDR weather-satellite backup | Resilience, not primary alpha |
+| M23 | P1/RESEARCH | Persistent-contrail / contrail-cirrus activity predicts residual daily-high cooling conditional on city/time | Google satellite detections; city-specific rolling thresholds; must prove OOS incremental value |
 
 ## IV. Text, aviation and release-timing information
 
@@ -390,7 +391,7 @@ Do not brute-force hundreds of arbitrary feature combinations. Use a hierarchy:
 4. **Regime layer:** front/cloud/sea-breeze/convective states only where physically justified.
 5. **Cross-venue layer:** explicit basis distributions and venue lead/lag.
 
-A combination advances only if each added component improves untouched chronological OOS net P&L or reduces tail risk. Use ablations to prove incremental value.
+A combination advances only if the resulting strategy improves untouched chronological OOS net P&L or reduces tail risk.
 
 ---
 

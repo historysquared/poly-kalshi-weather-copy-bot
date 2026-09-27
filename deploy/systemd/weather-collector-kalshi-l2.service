@@ -1,0 +1,21 @@
+[Unit]
+Description=PredictionBots Kalshi Weather L2 Read-Only Archive Collector
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/weather-alpha-signal-pipeline
+EnvironmentFile=/root/.config/weather-alpha/live.env
+Environment=PYTHONPATH=/opt/weather-alpha-signal-pipeline
+ExecStartPre=/usr/bin/test -r /root/.kalshi/weather_ws_private_key.pem
+ExecStart=/opt/weather-alpha-signal-pipeline/.venv/bin/python scripts/record_kalshi_weather_l2_archive.py --raw-dir /data/weather/raw/kalshi_l2 --health-output /data/weather/status/kalshi_l2_archive_health.json --ticker-cache /data/weather/status/kalshi_weather_open_tickers.json
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+KillSignal=SIGINT
+
+[Install]
+WantedBy=multi-user.target

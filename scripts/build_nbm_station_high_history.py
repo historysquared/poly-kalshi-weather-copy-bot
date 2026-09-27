@@ -22,6 +22,7 @@ def main() -> int:
     p.add_argument("--cycle", type=int, default=0)
     p.add_argument("--config", type=Path, default=Path("config/contrail_locations.yaml"))
     p.add_argument("--output", type=Path, default=Path("/data/weather/normalized/forecasts/nbm_station_high_history.json"))
+    p.add_argument("--fail-on-error", action="store_true", help="exit non-zero when archive/station gaps are recorded")
     args = p.parse_args()
     if args.end_date < args.start_date:
         raise SystemExit("end-date must be on or after start-date")
@@ -35,15 +36,25 @@ def main() -> int:
     client = NbmTextClient()
     rows: list[dict] = []
     day = args.start_date
+    args.output.parent.mkdir(parents=True, exist_ok=True)
     while day <= args.end_date:
-        fetched = client.fetch_station_maxes(day, stations, args.cycle)
+        fetch_error = None
+        try:
+            fetched = client.fetch_station_maxes(day, stations, args.cycle)
+        except Exception as exc:
+            fetched = []
+            fetch_error = f"archive_fetch_error:{type(exc).__name__}:{exc}"
         by_station = {x.station: x for x in fetched}
         for station in stations:
             item = by_station.get(station)
+            location_keys = station_to_locations.get(station, []) or [""]
             if item is None:
-                rows.append({"station": station, "date": day.isoformat(), "error": "station_not_found"})
+                error = fetch_error or "station_not_found"
+                for location_key in location_keys:
+                    rows.append({"location_key": location_key, "station": station, "date": day.isoformat(),
+                                 "model": "NOAA_NBM_NBS", "error": error})
                 continue
-            for location_key in station_to_locations.get(station, []):
+            for location_key in location_keys:
                 rows.append({
                     "location_key": location_key,
                     "station": station,
@@ -57,14 +68,18 @@ def main() -> int:
                     "source_url": item.source_url,
                     "error": None,
                 })
-        print(f"date={day.isoformat()} stations={len(fetched)}/{len(stations)} rows={len(rows)}", flush=True)
+        # Persist after every date so a network/archive failure cannot erase completed work.
+        args.output.write_text(json.dumps(rows, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        print(f"date={day.isoformat()} stations={len(fetched)}/{len(stations)} rows={len(rows)} "
+              f"error={fetch_error or 'none'}", flush=True)
         day += timedelta(days=1)
 
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(rows, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     errors = [x for x in rows if x.get("error")]
-    print(f"output={args.output} rows={len(rows)} errors={len(errors)}")
-    return 0 if not errors else 2
+    error_dates = sorted({x["date"] for x in errors})
+    print(f"output={args.output} rows={len(rows)} errors={len(errors)} error_dates={len(error_dates)}")
+    if error_dates:
+        print("gap_dates=" + ",".join(error_dates))
+    return 2 if args.fail_on_error and errors else 0
 
 
 if __name__ == "__main__":

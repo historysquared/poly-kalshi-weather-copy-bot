@@ -4,7 +4,7 @@
 
 The strongest historical result currently comes from the causal settlement strategy evaluated with real PMXT books, latency, depth, fee, price-floor and official CLI settlement logic. The broad parameter grid produced many cells around ~19–22% ROI; the representative 300-second-latency / 5-contract / no-price-floor cell had 114 executed trades, 71 wins, 43 losses, ~62.3% win rate, net P&L ~64.31 on ~290.69 capital at risk, ~22.1% ROI and 28 settlement dates. The 15-cent floor variants had fewer trades and higher win rates in several cells. Date-block bootstrap diagnostics were reported as ROBUST_PASS for the tested cells.
 
-This is **promising evidence, not a production claim**. The strategy needs more chronological coverage, more stations/seasons, source-family separation, feature ablation and forward confirmation.
+This is **promising evidence, not a production claim**. The strategy needs more chronological coverage, more stations/seasons, source-family separation, forward confirmation.
 
 ## Why the current 21% result is not enough
 
@@ -103,7 +103,7 @@ Every feature records:
 - **M3 satellite/radar**: GOES/GLM/MRMS incremental features.
 - **M4 text/aviation**: SPECI/TAF/AFD incremental features.
 
-Promote a tier only if it improves untouched OOS economics/calibration over the previous tier.
+Promote a tier only if it improves untouched OOS economics over the previous tier.
 
 ### 4. Chronological validation
 

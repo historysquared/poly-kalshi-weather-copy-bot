@@ -24,6 +24,12 @@ Weather-market research and paper-trading engine for Kalshi and Polymarket US. T
 
 No live order placement is enabled in the current research branch.
 
+## Canonical signal research pipeline
+
+The repository now uses `weather_alpha.engine` as the canonical signal/fill/settlement model and `weather_alpha.research` as the executable research registry, runner and economic scorecard layer. Existing Weather Company JSONL processes are bridged into the shared research store at `/data/weather/live/weather_research.sqlite3` so forward paper tracks can be compared with one consistent accounting model without losing their existing audit logs.
+
+See `docs/SIGNAL_RESEARCH_PIPELINE.md`.
+
 ## Project boundary
 
 This repo is weather-only. BTC/crypto repos and databases may be inspected read-only for engineering ideas, but weather runtime code, data, tables, results, backtests and execution remain independent.

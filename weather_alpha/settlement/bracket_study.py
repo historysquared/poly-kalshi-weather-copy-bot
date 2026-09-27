@@ -9,9 +9,9 @@ def contract_contains(shape: str, lower: float | None, upper: float | None, valu
         return None
     shape = (shape or "").lower()
     if shape == "below":
-        return None if upper is None else float(value_f) <= float(upper)
+        return None if upper is None else float(value_f) < float(upper)
     if shape == "above":
-        return None if lower is None else float(value_f) >= float(lower)
+        return None if lower is None else float(value_f) > float(lower)
     if shape == "bucket":
         return None if lower is None or upper is None else float(lower) <= float(value_f) <= float(upper)
     return None

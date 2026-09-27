@@ -1,10 +1,25 @@
 # Weather Alpha Project Handoff
 
-_Last updated: 2026-09-23_
+_Last updated: 2026-09-26_
 
 ## Purpose
 
 This is the durable handoff for the Weather Alpha project. GitHub `main` is the source of truth for code; `/data/weather` on `weather-research` is the source of truth for live archives and generated research outputs. No secrets belong in the repository.
+
+## 2026-09-26 audit update
+
+The current detailed audit is `docs/PROJECT_AUDIT_2026-09-26.md`. The unified branch has 132 passing tests after the collector-first hardening pass.
+
+Important corrections/current state:
+
+- strict Kalshi `<` / `>` tail semantics are now enforced; the corrected historical settlement strategy is about 19.1% ROI at 300-second latency/depth-5 over 28 independent dates, not the earlier ~22% estimate;
+- all 30 corrected settlement robustness cells remain `ROBUST_PASS`, but 28 dates are below the 50-date promotion gate;
+- empirical remaining-heating economics are strongly positive in the current sample but only 21-22 independent dates, so the strategy is `PROVISIONAL`;
+- the canonical research store now contains migrated main/A/B/C/D forward history and drives the live economic scorecard;
+- main Weather Company terminal-high forward paper remains negative (-60.98% ROI over 29 settled fills / 13 dates);
+- live surface retrieval now has bounded 429 retry plus transparent fresh-cache fallback;
+- Kalshi L2 is live under systemd across all 20 configured daily-high series; Telegram remains blocked by absent credentials;
+- the unified branch must still be published through GitHub and merged before `main` becomes the code source of truth for these audit changes.
 
 ## Repository state
 
@@ -24,7 +39,7 @@ Unified main is deployed in parallel at:
 The deployment worktree is pinned to merged `main`, not to the older live checkout. A dedicated venv was created there and populated with the project's runtime/test dependencies. Local validation on the unified worktree:
 
 - `python -m compileall weather_alpha scripts` — PASS
-- `pytest -q` — `106 passed`
+- `pytest -q` — current unified pipeline branch: `110 passed`
 - NBM one-day smoke — 21/21 configured stations, 0 errors
 - exact Kalshi bucket one-day smoke — 20/20 city events, 0 invalid ladders
 - Google Contrails one-day smoke — 21/21 configured locations, 0 errors
@@ -49,10 +64,9 @@ First verified cycle produced a real diagnostic signal for `KXHIGHDEN-26SEP23` a
 
 Two requested services remain blocked by missing local credentials on `weather-research`:
 
-- `weather-l2` requires `KALSHI_API_KEY_ID` plus a readable `KALSHI_PRIVATE_KEY_PATH`.
 - `weather-telegram` requires `TELEGRAM_BOT_TOKEN` plus `TELEGRAM_CHAT_ID`.
 
-`/root/.config/weather-alpha/live.env` is currently absent and `/root/.kalshi/weather_ws_private_key.pem` is currently absent. Searches of local environment files, active process environment names, shell history, and prior local tool logs did not locate usable copies. The services were not fake-started and no placeholder credentials were created.
+Kalshi credentials are now installed locally with restrictive permissions and are not committed. `weather-collector-kalshi-l2.service` is enabled and active. The dedicated archive collector tracks 20 recurring daily-high series / 240 currently open contracts and writes append-only raw gzip records under `/data/weather/raw/kalshi_l2`.
 
 Once those credentials are restored locally, run the unified stack launcher with:
 
@@ -74,6 +88,24 @@ The project now contains:
 - Google Contrails observation / persistence research
 - dashboard and Telegram observability
 - historical replay, parameter tournaments and OOS validation tooling
+
+## Unified signal research pipeline
+
+A canonical executable research layer is now built on top of the existing generic engine:
+
+- `weather_alpha/research/registry.py` — code-level `FeatureDefinition` / `SignalDefinition` registry
+- `weather_alpha/research/runner.py` — fail-closed registered strategy runner
+- `weather_alpha/research/scorecard.py` — unified economic/operational scorecard
+- `weather_alpha/research/weather_company.py` — compatibility bridge from the established Weather Company JSONL runners into canonical engine state
+- `scripts/migrate_weather_company_jsonl_to_research_store.py` — imports existing main paper, A/B/C tournament and D diagnostic history
+- `scripts/build_unified_signal_scorecard.py` — current forward scorecard
+- `scripts/build_historical_settlement_scorecard.py` — canonical scorecard for the frozen historical causal-settlement configuration
+
+The duplicate root-level `Signal` model was removed; simple scan code now emits `weather_alpha.engine.models.Signal`. The unused legacy root-level `weather_alpha/paper.py` portfolio was removed. Existing live JSONL files remain for continuity, but new main/A/B/C/D evaluations, signals, fills and settlements are also written to `/data/weather/live/weather_research.sqlite3`.
+
+The active scorecard is deliberately economic/operational for this phase: evaluations, signals, fills, settlement outcomes, P&L, ROI, independent dates, stations, drawdown, execution markouts and validation status.
+
+`docs/SIGNAL_RESEARCH_PIPELINE.md` is the durable design reference.
 
 ## NBM + exact bucket + contrail research tooling
 
@@ -167,7 +199,6 @@ Required controls:
 - latency stress
 - independent-date counts alongside city-day counts
 - stale / missing feed fail-closed behavior
-- ablation proof for each added feature family
 
 ## Planned alpha families
 

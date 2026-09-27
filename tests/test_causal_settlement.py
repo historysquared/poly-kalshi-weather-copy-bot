@@ -54,3 +54,10 @@ def test_contract_contains_exact_decimal_edges():
     assert contract_contains("bucket", Decimal("81.5"), Decimal("82.4"), Decimal("81.5"))
     assert contract_contains("bucket", Decimal("81.5"), Decimal("82.4"), Decimal("82.4"))
     assert not contract_contains("bucket", Decimal("81.5"), Decimal("82.4"), Decimal("82.4001"))
+
+
+def test_contract_contains_tail_thresholds_are_strict_per_kalshi_rules():
+    assert not contract_contains("below", None, Decimal("80"), Decimal("80"))
+    assert contract_contains("below", None, Decimal("80"), Decimal("79"))
+    assert not contract_contains("above", Decimal("81"), None, Decimal("81"))
+    assert contract_contains("above", Decimal("81"), None, Decimal("82"))

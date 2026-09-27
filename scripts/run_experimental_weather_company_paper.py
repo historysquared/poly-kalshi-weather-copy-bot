@@ -20,6 +20,7 @@ from weather_alpha.markets.weather_catalog import classify_kalshi_market
 from weather_alpha.providers.surface import IemAsosOneMinuteArchive
 from weather_alpha.settlement.reconstruction import local_standard_settlement_window
 from weather_alpha.settlement.stations import station_clock
+from weather_alpha.research.weather_company import WeatherCompanyResearchBridge
 
 BASE = "https://external-api.kalshi.com/trade-api/v2"
 SERIES_STATION = {
@@ -94,9 +95,9 @@ def contains(shape: str, lower: Decimal | None, upper: Decimal | None, x: Decima
     if shape == "bucket" and lower is not None and upper is not None:
         return lower <= x <= upper
     if shape == "above" and lower is not None:
-        return x >= lower
+        return x > lower
     if shape == "below" and upper is not None:
-        return x <= upper
+        return x < upper
     return False
 
 
@@ -188,7 +189,7 @@ def current_quote(ticker: str) -> dict[str, Any] | None:
         return market if isinstance(market, dict) else None
 
 
-def settle_pending(args: argparse.Namespace, state: dict[str, Any]) -> None:
+def settle_pending(args: argparse.Namespace, state: dict[str, Any], bridge: WeatherCompanyResearchBridge) -> None:
     now = datetime.now(timezone.utc)
     remain = []
     for item in state.get("pending", []):
@@ -223,13 +224,14 @@ def settle_pending(args: argparse.Namespace, state: dict[str, Any]) -> None:
             "live_order_submission": False,
         })
         append_jsonl(args.fills_output, item)
+        bridge.record_fill(item)
         print(f"PAPER_FILL {item['ticker']} {side} price={ask} fee={fee} latency={args.latency_seconds}s", flush=True)
     state["pending"] = remain
 
 
-def run_cycle(args: argparse.Namespace, state: dict[str, Any]) -> None:
+def run_cycle(args: argparse.Namespace, state: dict[str, Any], bridge: WeatherCompanyResearchBridge) -> None:
     now = datetime.now(timezone.utc)
-    settle_pending(args, state)
+    settle_pending(args, state, bridge)
     contracts = fetch_contracts([x.strip().upper() for x in args.series.split(",") if x.strip()])
     by_event: dict[str, list[ContractView]] = {}
     for c in contracts:
@@ -286,6 +288,7 @@ def run_cycle(args: argparse.Namespace, state: dict[str, Any]) -> None:
                 "station": c.station,
                 "settlement_date": c.day.isoformat(),
                 "source_family": c.source_family,
+                "contract_semantics_version": "STRICT_KALSHI_TAILS_V1",
                 "side": side,
                 "signal_time": now.isoformat(),
                 "signal_yes_bid": None if c.yes_bid is None else str(c.yes_bid),
@@ -317,12 +320,23 @@ def run_cycle(args: argparse.Namespace, state: dict[str, Any]) -> None:
 
     for event_id, row in sorted(best_by_event.items()):
         traded = state.setdefault("traded_events", {})
-        if event_id in traded:
-            continue
         edge = Decimal(row["gross_edge"])
         ask = Decimal(row["signal_entry_ask"])
-        if not row["lock_gate_pass"] or edge < args.minimum_edge or ask < args.price_floor:
+        if event_id in traded:
+            reason = "ALREADY_TRADED_EVENT"
+        elif not row["lock_gate_pass"]:
+            reason = "LOCK_GATE_FAIL"
+        elif ask < args.price_floor:
+            reason = "PRICE_BELOW_FLOOR"
+        elif edge < args.minimum_edge:
+            reason = "EDGE_BELOW_MINIMUM"
+        else:
+            reason = "PAPER_TRADE_ELIGIBLE"
+        bridge.record_evaluation(row, emitted=reason == "PAPER_TRADE_ELIGIBLE", reason=reason)
+        if reason != "PAPER_TRADE_ELIGIBLE":
             continue
+        estimated_fee = kalshi_taker_fee(ask, 1)
+        row["engine_signal_id"] = bridge.record_signal(row, estimated_fee_per_contract=float(estimated_fee))
         fill_due = now.timestamp() + args.latency_seconds
         row["fill_due"] = datetime.fromtimestamp(fill_due, tz=timezone.utc).isoformat()
         row["paper_status"] = "PENDING_DELAYED_FILL"
@@ -357,6 +371,7 @@ def main() -> int:
     p.add_argument("--min-minutes-since-high", type=Decimal, default=Decimal("60"))
     p.add_argument("--min-drop-from-high-f", type=Decimal, default=Decimal("1.0"))
     p.add_argument("--max-positive-slope", type=Decimal, default=Decimal("0.02"))
+    p.add_argument("--research-db", type=Path, default=Path("/data/weather/live/weather_research.sqlite3"))
     args = p.parse_args()
 
     if args.loop_seconds < 10:
@@ -364,9 +379,10 @@ def main() -> int:
     print("mode=EXPERIMENTAL_WEATHER_COMPANY_PAPER live_order_submission=false", flush=True)
     print("WARNING=model is provisional and uncalibrated; this process cannot submit orders", flush=True)
     state = load_state(args.state)
+    bridge = WeatherCompanyResearchBridge(args.research_db)
     while True:
         try:
-            run_cycle(args, state)
+            run_cycle(args, state, bridge)
         except KeyboardInterrupt:
             save_state(args.state, state)
             raise

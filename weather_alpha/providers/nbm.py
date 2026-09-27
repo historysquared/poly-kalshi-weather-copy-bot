@@ -48,12 +48,21 @@ class NbmTextClient:
             for attempt in range(self.retries):
                 try:
                     response = client.get(url)
+                    # Permanent archive gaps (notably 404) are data-quality events, not retryable outages.
+                    if response.status_code != 429 and response.status_code < 500:
+                        response.raise_for_status()
+                        return response.text, url
                     response.raise_for_status()
                     return response.text, url
-                except Exception as exc:  # network/backoff boundary
+                except httpx.HTTPStatusError as exc:
                     last = exc
-                    if attempt + 1 < self.retries:
-                        time.sleep(min(20.0, 2.0 ** attempt))
+                    status = exc.response.status_code
+                    if status != 429 and status < 500:
+                        raise
+                except httpx.RequestError as exc:
+                    last = exc
+                if attempt + 1 < self.retries:
+                    time.sleep(min(20.0, 2.0 ** attempt))
             assert last is not None
             raise last
 

@@ -25,8 +25,3 @@ def empirical_distribution(members_f: list[float], sigma_floor_f: float = 0.75) 
     mu = mean(members_f)
     sigma = max(pstdev(members_f) if len(members_f) > 1 else 0.0, sigma_floor_f)
     return float(mu), float(sigma)
-
-def brier_score(probability: float, outcome: bool) -> float:
-    p = min(1.0, max(0.0, probability))
-    y = 1.0 if outcome else 0.0
-    return (p - y) ** 2

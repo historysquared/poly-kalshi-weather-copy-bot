@@ -1,9 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Literal
-
-Side = Literal["yes", "no"]
 
 @dataclass(frozen=True)
 class Observation:
@@ -41,13 +38,3 @@ class MarketQuote:
     volume: float
     close_time: datetime | None
     updated_time: datetime | None
-
-@dataclass(frozen=True)
-class Signal:
-    ticker: str
-    side: Side
-    model_probability: float
-    entry_price: float
-    edge: float
-    expected_value_per_contract: float
-    reason: str

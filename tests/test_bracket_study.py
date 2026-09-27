@@ -24,3 +24,8 @@ def test_no_flip_when_difference_does_not_change_bucket():
     assert flip.public_winner is True
     assert flip.public_flip is False
     assert boundary_distance_f("above", 90, None, 91) == 1.0
+
+
+def test_tail_thresholds_are_strict_not_inclusive():
+    assert contract_contains("below", None, 85, 85) is False
+    assert contract_contains("above", 93, None, 93) is False
