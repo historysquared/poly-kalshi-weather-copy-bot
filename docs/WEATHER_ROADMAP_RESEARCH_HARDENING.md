@@ -5,7 +5,7 @@ This addendum records research-driven changes to `WEATHER_ALPHA_PRODUCTION_ROADM
 ## Executive changes
 
 1. Insert a settlement-reconstruction workstream before forecast modeling.
-2. Make NBM the primary forecast baseline; retain HRRR as a secondary/incremental source and ablation target.
+2. Make NBM the primary forecast baseline; retain HRRR as a secondary/incremental source.
 3. Add ASOS quality-control gates and event-specific fail-closed behavior.
 4. Model NWS Local Standard Time reporting windows explicitly per station/event.
 5. Add maker/taker as a first-class strategy dimension, including queue/fill probability and adverse-selection markouts.

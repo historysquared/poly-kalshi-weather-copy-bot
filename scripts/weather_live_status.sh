@@ -1,38 +1,53 @@
 #!/usr/bin/env bash
 set -u
 
-LIVE=/data/weather/live
+LIVE="${LIVE:-/data/weather/live}"
+DB="${WEATHER_RESEARCH_DB:-$LIVE/weather_research.sqlite3}"
 
-echo "=== TMUX ==="
+echo "=== TIME ==="
+date -Is
+
+echo; echo "=== TMUX ==="
 tmux ls 2>/dev/null | grep -E '^weather-' || true
 
-echo
-echo "=== PROCESSES ==="
-ps aux | grep -E '[r]un_weather_company_(paper_live|dashboard|forward_tournament|diagnostic_track).py|[r]ecord_kalshi_weather_l2.py|[t]elegram_weather_paper_watcher.py' || true
+echo; echo "=== CORE PROCESSES ==="
+ps -eo pid,etime,cmd | grep -E '[r]un_weather_company_(paper_live|dashboard|forward_tournament|diagnostic_track).py|[s]core_weather_company_paper_settlements.py|[r]ecord_kalshi_weather_l2.py|[t]elegram_weather_paper_watcher.py|[b]uild_unified_signal_scorecard.py' || true
 
-echo
-echo "=== DASHBOARD ==="
-head -n 20 "$LIVE/weather_company_dashboard.txt" 2>/dev/null || true
-
-echo
-echo "=== L2 HEALTH ==="
-cat "$LIVE/kalshi_l2_health.json" 2>/dev/null || true
-
-echo
-echo "=== L2 LATEST FILES ==="
-find "$LIVE/kalshi_l2" -type f -name '*.jsonl.gz' -printf '%TY-%Tm-%Td %TH:%TM  %10s  %p\n' 2>/dev/null | sort | tail -n 5
-
-echo
-echo "=== LAST SIGNALS ==="
-for f in   weather_company_paper_signals.jsonl   weather_company_tournament_signals.jsonl   weather_company_diagnostic_signals.jsonl; do
-  echo "--- $f"
-  tail -n 2 "$LIVE/$f" 2>/dev/null || true
+echo; echo "=== LIVE FILE FRESHNESS ==="
+for f in weather_company_dashboard.json weather_company_paper_state.json weather_company_tournament_state.json weather_company_diagnostic_state.json weather_signal_scorecard.json; do
+  if [[ -e "$LIVE/$f" ]]; then
+    stat -c '%y  %10s  %n' "$LIVE/$f"
+  else
+    echo "MISSING $LIVE/$f"
+  fi
 done
 
-echo
-echo "=== LAST MARKOUTS ==="
-tail -n 10 "$LIVE/weather_company_latency_markouts.jsonl" 2>/dev/null || true
+echo; echo "=== CANONICAL RESEARCH STORE ==="
+if [[ -f "$DB" ]]; then
+  python3 - "$DB" <<'PY'
+import sqlite3, sys
+c = sqlite3.connect(sys.argv[1])
+for t in ('model_evaluations','signals','fills','settlements','paper_pnl','strategy_errors'):
+    try:
+        n = c.execute(f"select count(*) from {t}").fetchone()[0]
+        print(f"{t}: {n}")
+    except Exception as e:
+        print(f"{t}: ERROR {e}")
+PY
+else
+  echo "MISSING $DB"
+fi
 
-echo
-echo "=== TELEGRAM LOG ==="
-tail -n 10 "$LIVE/weather_telegram.log" 2>/dev/null || true
+echo; echo "=== ECONOMIC SCORECARD ==="
+sed -n '1,24p' "$LIVE/weather_signal_scorecard.md" 2>/dev/null || true
+
+echo; echo "=== CREDENTIAL-GATED SERVICES ==="
+[[ -f /root/.config/weather-alpha/live.env ]] && echo "live.env: present" || echo "live.env: MISSING"
+[[ -f /root/.kalshi/weather_ws_private_key.pem ]] && echo "kalshi private key: present" || echo "kalshi private key: MISSING"
+tmux has-session -t weather-l2 2>/dev/null && echo "weather-l2: running" || echo "weather-l2: not running"
+tmux has-session -t weather-telegram 2>/dev/null && echo "weather-telegram: running" || echo "weather-telegram: not running"
+
+echo; echo "=== RECENT PROVIDER ERRORS ==="
+tail -n 250 "$LIVE/weather_company_paper.log" 2>/dev/null \
+  | grep -E 'obs_error|stale|429|Traceback|ERROR' \
+  | tail -n 12 || true

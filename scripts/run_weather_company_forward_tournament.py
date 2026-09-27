@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import scripts.run_experimental_weather_company_paper as paper
+from weather_alpha.research.weather_company import WeatherCompanyResearchBridge
 
 
 @dataclass(frozen=True)
@@ -27,6 +28,11 @@ TRACKS = (
     Track("B_MODERATE", Decimal("45"), Decimal("0.75"), Decimal("0.03"), Decimal("0.15"), Decimal("0.06")),
     Track("C_EXPLORATORY", Decimal("30"), Decimal("0.50"), Decimal("0.05"), Decimal("0.10"), Decimal("0.04")),
 )
+TRACK_STRATEGY_IDS = {
+    "A_CONTROL": "weather_company_terminal_high_A_control_v1",
+    "B_MODERATE": "weather_company_terminal_high_B_moderate_v1",
+    "C_EXPLORATORY": "weather_company_terminal_high_C_exploratory_v1",
+}
 
 
 def D(v: Any) -> Decimal | None:
@@ -152,7 +158,7 @@ def evaluate_contract(row: dict[str, Any], track: Track) -> dict[str, Any] | Non
     }
 
 
-def settle_pending(args: argparse.Namespace, state: dict[str, Any]) -> None:
+def settle_pending(args: argparse.Namespace, state: dict[str, Any], bridges: dict[str, WeatherCompanyResearchBridge]) -> None:
     now = datetime.now(timezone.utc)
     for track in TRACKS:
         ts = state.setdefault(track.name, {"traded_events": {}, "pending": []})
@@ -188,12 +194,13 @@ def settle_pending(args: argparse.Namespace, state: dict[str, Any]) -> None:
                 "side": side,
             })
             append_jsonl(args.fills_output, item)
+            bridges[track.name].record_fill(item)
             print(f"TOURNAMENT_FILL track={track.name} ticker={item['ticker']} side={side} price={ask}", flush=True)
         ts["pending"] = remain
 
 
-def run_cycle(args: argparse.Namespace, state: dict[str, Any]) -> None:
-    settle_pending(args, state)
+def run_cycle(args: argparse.Namespace, state: dict[str, Any], bridges: dict[str, WeatherCompanyResearchBridge]) -> None:
+    settle_pending(args, state, bridges)
     snap_time, rows = latest_contract_snapshot(args.contract_history)
     now = datetime.now(timezone.utc)
     if not rows or snap_time is None:
@@ -232,6 +239,8 @@ def run_cycle(args: argparse.Namespace, state: dict[str, Any]) -> None:
             decision = str(best["tournament_decision"])
             counts[decision] = counts.get(decision, 0) + 1
             append_jsonl(args.decisions_output, best)
+            bridge = bridges[track.name]
+            bridge.record_evaluation(best, emitted=decision == "PAPER_TRADE_ELIGIBLE", reason=decision)
             if decision != "PAPER_TRADE_ELIGIBLE":
                 continue
             due = now.timestamp() + args.latency_seconds
@@ -239,6 +248,9 @@ def run_cycle(args: argparse.Namespace, state: dict[str, Any]) -> None:
             best["fill_due"] = datetime.fromtimestamp(due, tz=timezone.utc).isoformat()
             best["paper_status"] = "PENDING_DELAYED_FILL"
             best["side"] = best["tournament_side"]
+            best["engine_signal_id"] = bridge.record_signal(
+                best, estimated_fee_per_contract=float(D(best.get("tournament_fee_per_contract")) or Decimal("0"))
+            )
             append_jsonl(args.signals_output, best)
             ts.setdefault("pending", []).append(dict(best))
             ts.setdefault("traded_events", {})[event_id] = {
@@ -266,13 +278,15 @@ def main() -> int:
     p.add_argument("--latency-seconds", type=int, default=300)
     p.add_argument("--max-snapshot-age-seconds", type=int, default=180)
     p.add_argument("--contracts", type=int, default=1)
+    p.add_argument("--research-db", type=Path, default=Path("/data/weather/live/weather_research.sqlite3"))
     args = p.parse_args()
     print("mode=WEATHER_COMPANY_FORWARD_TOURNAMENT live_order_submission=false", flush=True)
     print("tracks=A_CONTROL,B_MODERATE,C_EXPLORATORY synchronized_dashboard_snapshot=true", flush=True)
     state = load_state(args.state)
+    bridges = {name: WeatherCompanyResearchBridge(args.research_db, strategy_id) for name, strategy_id in TRACK_STRATEGY_IDS.items()}
     while True:
         try:
-            run_cycle(args, state)
+            run_cycle(args, state, bridges)
         except KeyboardInterrupt:
             save_state(args.state, state)
             raise

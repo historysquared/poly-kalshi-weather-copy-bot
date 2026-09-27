@@ -9,6 +9,8 @@ from typing import Any
 
 import httpx
 
+from weather_alpha.research.weather_company import WeatherCompanyResearchBridge
+
 BASE = "https://external-api.kalshi.com/trade-api/v2"
 
 
@@ -119,7 +121,7 @@ def score_fill(fill: dict[str, Any], market: dict[str, Any]) -> dict[str, Any] |
     }
 
 
-def run_once(args: argparse.Namespace) -> tuple[int, int, int]:
+def run_once(args: argparse.Namespace, bridge: WeatherCompanyResearchBridge) -> tuple[int, int, int]:
     fills = [r for r in read_jsonl(args.fills) if r.get("fill_status") == "PAPER_FILLED"]
     scored = read_jsonl(args.output)
     scored_keys = {str(r.get("fill_key") or fill_key(r)) for r in scored}
@@ -146,6 +148,7 @@ def run_once(args: argparse.Namespace) -> tuple[int, int, int]:
                 continue
             row["fill_key"] = key
             append_jsonl(args.output, row)
+            bridge.record_settlement(row, market)
             scored_keys.add(key)
             new_scores += 1
             print(
@@ -179,14 +182,16 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--output", type=Path, default=Path("/data/weather/live/weather_company_paper_settled.jsonl"))
     p.add_argument("--loop-seconds", type=int, default=300)
     p.add_argument("--once", action="store_true")
+    p.add_argument("--research-db", type=Path, default=Path("/data/weather/live/weather_research.sqlite3"))
     return p.parse_args()
 
 
 def main() -> int:
     args = parse_args()
+    bridge = WeatherCompanyResearchBridge(args.research_db)
     print("mode=PAPER_SETTLEMENT_SCORER live_order_submission=false", flush=True)
     while True:
-        checked, new_scores, unresolved = run_once(args)
+        checked, new_scores, unresolved = run_once(args, bridge)
         print(f"settlement_cycle checked={checked} new_scores={new_scores} unresolved={unresolved}", flush=True)
         print_summary(args.output)
         if args.once:

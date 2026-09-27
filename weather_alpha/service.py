@@ -6,6 +6,7 @@ from .providers.open_meteo import OpenMeteoEnsembleClient
 from .probability import gaussian_above_probability, gaussian_below_probability, gaussian_bucket_probability
 from .signals import signal_from_probability
 from .storage import JsonlArchive
+from .engine.models import jsonable
 
 class WeatherAlphaService:
     def __init__(self):
@@ -39,7 +40,7 @@ class WeatherAlphaService:
                 "p_yes": p_yes,
                 "yes_bid": m.yes_bid,
                 "yes_ask": m.yes_ask,
-                "signal": sig.__dict__ if sig else None,
+                "signal": jsonable(sig) if sig else None,
             }
             self.archive.append("scans", row)
             results.append(row)

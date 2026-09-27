@@ -363,7 +363,6 @@ Add only if they improve untouched OOS results:
 - NWS AFD forecaster text
 - additional ensembles/models
 
-Each addition requires ablation proof.
 
 ---
 
@@ -417,7 +416,6 @@ Report:
 - mean event ROI
 - median event ROI
 - hit rate
-- calibration/Brier/log loss as diagnostics
 - max drawdown
 - concentration by station/date/strategy
 - capacity at 1/5/25 contracts

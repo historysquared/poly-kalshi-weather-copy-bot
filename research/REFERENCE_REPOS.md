@@ -8,7 +8,6 @@ Useful patterns to inspect/reimplement:
 - Kalshi + Polymarket venue abstraction
 - periodic weather scanning/scheduling
 - simulation mode and bankroll/equity tracking
-- Brier-score calibration reporting
 - fractional Kelly sizing with hard caps
 - daily-loss circuit breaker and pending-position caps
 - FastAPI backend/dashboard separation

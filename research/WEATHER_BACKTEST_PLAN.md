@@ -115,7 +115,7 @@ Run optimistic, realistic and conservative fill scenarios. Depth-aware fills may
 
 ## Statistical protocol
 
-Train/calibrate on earlier dates only; walk forward; hold out cities/stations; report by station/season/horizon/price/spread/model; bootstrap ROI/P&L confidence intervals; track Brier/log loss separately from trading P&L; correct for multiple testing; and promote only untouched rules that persist out of sample.
+Train/calibrate on earlier dates only; walk forward; hold out cities/stations; report by station/season/horizon/price/spread/model; bootstrap ROI/P&L confidence intervals; correct for multiple testing; and promote only untouched rules that persist out of sample.
 
 ## Primary ranking metrics
 
@@ -126,9 +126,8 @@ Train/calibrate on earlier dates only; walk forward; hold out cities/stations; r
 5. Profit factor
 6. Daily Sharpe-like statistic
 7. Win rate as descriptive only
-8. Calibration/Brier/log loss
-9. Historical executable capacity
-10. Incremental value versus simpler baseline strategy
+8. Historical executable capacity
+9. Incremental value versus simpler baseline strategy
 
 ## First research queue
 

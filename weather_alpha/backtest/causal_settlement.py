@@ -92,11 +92,11 @@ def contract_contains(shape: str, lower: Decimal | None, upper: Decimal | None, 
     if shape == "below":
         if upper is None:
             raise ValueError("below contract requires upper")
-        return value <= upper
+        return value < upper
     if shape == "above":
         if lower is None:
             raise ValueError("above contract requires lower")
-        return value >= lower
+        return value > lower
     if shape == "bucket":
         if lower is None or upper is None:
             raise ValueError("bucket contract requires lower and upper")

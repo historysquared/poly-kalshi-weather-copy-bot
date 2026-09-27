@@ -21,9 +21,9 @@ def contract_yes(contract: dict[str, Any], value_f: Decimal) -> bool:
     lo = D(contract.get("lower"))
     hi = D(contract.get("upper"))
     if shape == "above":
-        return lo is not None and value_f >= lo
+        return lo is not None and value_f > lo
     if shape == "below":
-        return hi is not None and value_f <= hi
+        return hi is not None and value_f < hi
     if shape == "bucket":
         if lo is None or hi is None:
             return False

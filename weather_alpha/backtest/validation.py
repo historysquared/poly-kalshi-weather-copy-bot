@@ -115,6 +115,7 @@ def validate_strategy(
     *,
     min_events: int = 30,
     min_dates: int = 20,
+    min_dates_for_keep: int = 50,
     min_stations: int = 2,
     require_positive_ci_for_keep: bool = True,
 ) -> ValidationResult:
@@ -136,19 +137,22 @@ def validate_strategy(
 
     if len(events) < min_events or dates < min_dates or stations < min_stations:
         verdict = Verdict.INSUFFICIENT_DATA
-        reason = f"need >= {min_events} events, >= {min_dates} settlement dates, >= {min_stations} stations"
+        reason = f"need >= {min_events} events, >= {min_dates} settlement dates, >= {min_stations} stations for exploratory read"
     elif net <= 0 or avg <= 0:
         verdict = Verdict.KILL
         reason = "negative out-of-sample economics after realistic execution"
     elif ci_hi <= 0:
         verdict = Verdict.KILL
         reason = "95% settlement-date block-bootstrap ROI interval is entirely non-positive"
+    elif dates < min_dates_for_keep:
+        verdict = Verdict.PROVISIONAL
+        reason = f"positive exploratory economics; need >= {min_dates_for_keep} independent settlement dates for KEEP"
     elif require_positive_ci_for_keep and ci_lo <= 0:
         verdict = Verdict.PROVISIONAL
         reason = "positive point estimate but date-block 95% ROI interval crosses zero"
     else:
         verdict = Verdict.KEEP
-        reason = "positive OOS economics with positive date-block bootstrap lower bound"
+        reason = "positive OOS economics with positive date-block bootstrap lower bound and sufficient independent dates"
 
     return ValidationResult(
         strategy=strategy,

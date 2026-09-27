@@ -11,8 +11,10 @@ from typing import Any
 
 import scripts.run_experimental_weather_company_paper as paper
 import scripts.run_weather_company_forward_tournament as tourney
+from weather_alpha.research.weather_company import WeatherCompanyResearchBridge
 
 TRACK = "D_DIAGNOSTIC_NO_LOCK"
+STRATEGY_ID = "weather_company_terminal_high_D_diagnostic_v1"
 
 
 def D(v: Any) -> Decimal | None:
@@ -143,7 +145,7 @@ def evaluate(row: dict[str, Any], args: argparse.Namespace) -> dict[str, Any] | 
     }
 
 
-def settle_pending(args: argparse.Namespace, state: dict[str, Any]) -> None:
+def settle_pending(args: argparse.Namespace, state: dict[str, Any], bridge: WeatherCompanyResearchBridge) -> None:
     now = datetime.now(timezone.utc)
     remain = []
     for item in state.get("pending", []):
@@ -178,12 +180,13 @@ def settle_pending(args: argparse.Namespace, state: dict[str, Any]) -> None:
             "live_order_submission": False,
         })
         append_jsonl(args.fills_output, item)
+        bridge.record_fill(item)
         print(f"DIAGNOSTIC_FILL ticker={item['ticker']} side={side} price={ask}", flush=True)
     state["pending"] = remain
 
 
-def run_cycle(args: argparse.Namespace, state: dict[str, Any]) -> None:
-    settle_pending(args, state)
+def run_cycle(args: argparse.Namespace, state: dict[str, Any], bridge: WeatherCompanyResearchBridge) -> None:
+    settle_pending(args, state, bridge)
     snap_time, rows = tourney.latest_contract_snapshot(args.contract_history)
     now = datetime.now(timezone.utc)
     if not rows or snap_time is None:
@@ -226,6 +229,7 @@ def run_cycle(args: argparse.Namespace, state: dict[str, Any]) -> None:
         best["tournament_decision"] = decision
         counts[decision] += 1
         append_jsonl(args.decisions_output, best)
+        bridge.record_evaluation(best, emitted=decision == "DIAGNOSTIC_PAPER_ELIGIBLE", reason=decision)
         if decision != "DIAGNOSTIC_PAPER_ELIGIBLE":
             continue
 
@@ -233,6 +237,9 @@ def run_cycle(args: argparse.Namespace, state: dict[str, Any]) -> None:
         best["fill_due"] = datetime.fromtimestamp(now.timestamp() + args.latency_seconds, tz=timezone.utc).isoformat()
         best["paper_status"] = "PENDING_DELAYED_FILL"
         best["side"] = best["tournament_side"]
+        best["engine_signal_id"] = bridge.record_signal(
+            best, estimated_fee_per_contract=float(D(best.get("tournament_fee_per_contract")) or Decimal("0"))
+        )
         append_jsonl(args.signals_output, best)
         pending.append(dict(best))
         traded[event_id] = {"ticker": best.get("ticker"), "signal_time": best["signal_time"]}
@@ -267,14 +274,16 @@ def main() -> int:
     p.add_argument("--control-min-minutes-since-high", type=Decimal, default=Decimal("60"))
     p.add_argument("--control-min-drop-from-high-f", type=Decimal, default=Decimal("1.0"))
     p.add_argument("--control-max-positive-slope", type=Decimal, default=Decimal("0.02"))
+    p.add_argument("--research-db", type=Path, default=Path("/data/weather/live/weather_research.sqlite3"))
     args = p.parse_args()
 
     print("mode=WEATHER_COMPANY_DIAGNOSTIC_NO_LOCK live_order_submission=false", flush=True)
     print("diagnostic_only=true production_eligible=false lock_gate_bypassed=true", flush=True)
     state = load_state(args.state)
+    bridge = WeatherCompanyResearchBridge(args.research_db, STRATEGY_ID)
     while True:
         try:
-            run_cycle(args, state)
+            run_cycle(args, state, bridge)
         except KeyboardInterrupt:
             save_state(args.state, state)
             raise

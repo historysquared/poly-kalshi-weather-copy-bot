@@ -85,9 +85,9 @@ def bucket_label(shape: str, lower, upper) -> str:
     if shape == "bucket":
         return f"{lower}-{upper}"
     if shape == "above":
-        return f">={lower}"
+        return f">{lower}"
     if shape == "below":
-        return f"<={upper}"
+        return f"<{upper}"
     return shape
 
 
@@ -186,6 +186,7 @@ def build_snapshot(args) -> dict:
                 "station": c.station,
                 "settlement_date": c.day.isoformat(),
                 "source_family": c.source_family,
+                "contract_semantics_version": "STRICT_KALSHI_TAILS_V1",
                 "ticker": c.ticker,
                 "shape": c.shape,
                 "lower": None if c.lower is None else str(c.lower),
