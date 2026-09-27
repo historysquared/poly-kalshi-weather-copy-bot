@@ -1,0 +1,34 @@
+name: Apply unified weather patch
+
+on:
+  push:
+    branches:
+      - codex/unify-weather-signal-pipeline
+    paths:
+      - .handoff/READY
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: codex/unify-weather-signal-pipeline
+      - name: Reassemble and validate patch
+        run: |
+          cat .handoff/patch-* > /tmp/weather-unified.patch
+          git apply --check /tmp/weather-unified.patch
+      - name: Apply exact audited patch
+        run: |
+          git apply --index /tmp/weather-unified.patch
+          git status --short
+      - name: Commit and publish
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "feat: publish audited unified weather pipeline"
+          git push origin HEAD:codex/unify-weather-signal-pipeline
