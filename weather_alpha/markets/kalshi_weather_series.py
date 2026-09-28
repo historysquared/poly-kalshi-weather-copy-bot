@@ -23,6 +23,10 @@ SERIES_BY_CITY: dict[str, str] = {
     "oklahoma_city": "KXHIGHTOKC",
     "phoenix": "KXHIGHTPHX",
     "houston": "KXHIGHTHOU",
+    "trenton": "KXHIGHTTTN",
+    "louisville": "KXHIGHTSDF",
+    "newark": "KXHIGHTEWR",
+    "san_diego": "KXHIGHTSAN",
 }
 
 STATION_BY_CITY: dict[str, str] = {
@@ -33,9 +37,42 @@ STATION_BY_CITY: dict[str, str] = {
     "new_orleans": "KMSY", "washington_dc": "KDCA", "philadelphia": "KPHL",
     "san_antonio": "KSAT", "dallas": "KDFW", "oklahoma_city": "KOKC",
     "phoenix": "KPHX", "houston": "KIAH",
+    "trenton": "KTTN", "louisville": "KSDF", "newark": "KEWR",
+    "san_diego": "KSAN",
 }
 
+# Daily-low families are tracked separately because their physical model and
+# settlement window differ from daily highs. Add only rule-verified series here.
+LOW_SERIES_BY_CITY: dict[str, str] = {
+    "new_york_city": "KXLOWTNYC",
+    "chicago": "KXLOWTCHI",
+    "miami": "KXLOWTMIA",
+    "los_angeles": "KXLOWTLAX",
+    "san_francisco": "KXLOWTSFO",
+    "denver": "KXLOWTDEN",
+    "boston": "KXLOWTBOS",
+    "austin": "KXLOWTAUS",
+    "seattle": "KXLOWTSEA",
+    "atlanta": "KXLOWTATL",
+    "las_vegas": "KXLOWTLV",
+    "minneapolis": "KXLOWTMIN",
+    "new_orleans": "KXLOWTNOLA",
+    "washington_dc": "KXLOWTDC",
+    "philadelphia": "KXLOWTPHIL",
+    "san_antonio": "KXLOWTSATX",
+    "dallas": "KXLOWTDAL",
+    "oklahoma_city": "KXLOWTOKC",
+    "phoenix": "KXLOWTPHX",
+    "houston": "KXLOWTHOU",
+    "trenton": "KXLOWTTTN",
+    "louisville": "KXLOWTSDF",
+    "newark": "KXLOWTEWR",
+    "san_diego": "KXLOWTSAN",
+}
+
+
 ALL_HIGH_SERIES: tuple[str, ...] = tuple(SERIES_BY_CITY.values())
+ALL_DAILY_TEMPERATURE_SERIES: tuple[str, ...] = ALL_HIGH_SERIES + tuple(LOW_SERIES_BY_CITY.values())
 CITY_BY_SERIES: dict[str, str] = {series: city for city, series in SERIES_BY_CITY.items()}
 STATION_BY_SERIES: dict[str, str] = {
     SERIES_BY_CITY[city]: station for city, station in STATION_BY_CITY.items()

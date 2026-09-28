@@ -1,7 +1,7 @@
 from datetime import date
 
 from weather_alpha.markets.contracts import ContractShape
-from weather_alpha.markets.polymarket_us import PolymarketUSClient
+from weather_alpha.markets.polymarket_us import POLYMARKET_US_GATEWAY, PolymarketUSClient
 
 
 def test_normalizes_polymarket_us_temperature_bucket():
@@ -51,3 +51,8 @@ def test_rejects_unknown_city_until_station_is_verified():
         "markets": [{"id": 30, "slug": "phx-90-91", "title": "90-91°F", "outcome": "90-91°F"}],
     }
     assert PolymarketUSClient.normalize_events([event]) == []
+
+
+def test_public_polymarket_us_uses_gateway():
+    assert POLYMARKET_US_GATEWAY == "https://gateway.polymarket.us"
+    assert PolymarketUSClient().base_url == POLYMARKET_US_GATEWAY

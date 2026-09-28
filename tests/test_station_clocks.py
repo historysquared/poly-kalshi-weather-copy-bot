@@ -1,7 +1,7 @@
 from datetime import date
 
 from weather_alpha.settlement.reconstruction import local_standard_settlement_window
-from weather_alpha.settlement.stations import station_clock
+from weather_alpha.settlement.stations import registered_station_clocks, station_clock
 
 
 def test_chicago_summer_lst_window_is_one_am_to_one_am_civil():
@@ -20,3 +20,10 @@ def test_unknown_station_fails_closed():
         assert "no verified settlement clock" in str(exc)
     else:
         raise AssertionError("unknown station should fail closed")
+
+
+def test_daily_high_station_clock_registry_covers_current_city_universe():
+    clocks = registered_station_clocks()
+    assert len(clocks) == 24
+    for station in ("KTTN", "KSDF", "KEWR", "KSAN", "KPHX", "KLAS", "KSEA"):
+        assert station in clocks
