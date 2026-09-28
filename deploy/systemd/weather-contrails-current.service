@@ -1,0 +1,10 @@
+[Unit]
+Description=Weather Alpha current all-city Google Contrails snapshot
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/weather-alpha-strategy-release
+EnvironmentFile=/root/.weather-contrails.env
+Environment=PYTHONPATH=/opt/weather-alpha-strategy-release
+ExecStart=/opt/weather-alpha-signal-pipeline/.venv/bin/python scripts/record_contrail_current.py

@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh contrail hourly history daily
+
+[Timer]
+OnCalendar=*-*-* 12:30:00 UTC
+Persistent=true
+RandomizedDelaySec=120
+Unit=weather-contrails-history.service
+
+[Install]
+WantedBy=timers.target

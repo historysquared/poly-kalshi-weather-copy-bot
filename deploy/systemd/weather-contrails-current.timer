@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh all-city Google Contrails snapshot every 15 minutes
+
+[Timer]
+OnCalendar=*:0/15
+Persistent=true
+RandomizedDelaySec=20
+Unit=weather-contrails-current.service
+
+[Install]
+WantedBy=timers.target
