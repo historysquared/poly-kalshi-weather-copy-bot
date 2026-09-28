@@ -55,6 +55,7 @@ def format_weather_event(kind: str, payload: dict[str, Any], timezone_name: str)
     ticker = payload.get("ticker") or "?"
     side = str(payload.get("side") or payload.get("tournament_side") or "?").upper()
     track = payload.get("track")
+    strategy = payload.get("strategy")
     ask = (
         payload.get("fill_price")
         or payload.get("signal_entry_ask")
@@ -63,7 +64,7 @@ def format_weather_event(kind: str, payload: dict[str, Any], timezone_name: str)
     )
     gross = payload.get("gross_edge") or payload.get("tournament_gross_edge")
     net = payload.get("net_edge_after_fee") or payload.get("tournament_net_edge")
-    p_side = payload.get("provisional_probability_side") or payload.get("tournament_probability_side") or payload.get("model_probability_side")
+    p_side = payload.get("provisional_probability_side") or payload.get("tournament_probability_side") or payload.get("model_probability_side") or payload.get("model_probability")
     ts_raw = payload.get("fill_time") or payload.get("signal_time") or payload.get("snapshot_time")
     temp = payload.get("latest_temp_f")
     high = payload.get("high_so_far_f")
@@ -73,7 +74,7 @@ def format_weather_event(kind: str, payload: dict[str, Any], timezone_name: str)
     failures = payload.get("control_lock_failures") or payload.get("track_lock_reasons") or payload.get("lock_gate_reasons") or []
     if isinstance(failures, str):
         failures = [failures]
-    icon = "🧪" if str(track or "").startswith("D_") else ("✅" if "FILL" in kind else "🚨")
+    icon = "🧪" if str(track or "").startswith("D_") else ("📈" if "ALPHA" in kind else ("✅" if "FILL" in kind else "🚨"))
     title = kind.replace("_", " ")
     lines = [
         f"{icon} WEATHER {title}",
@@ -82,12 +83,18 @@ def format_weather_event(kind: str, payload: dict[str, Any], timezone_name: str)
     ]
     if track:
         lines.append(f"Track {track}")
+    if strategy:
+        lines.append(f"Strategy {strategy}")
     if p_side not in (None, "") or gross not in (None, "") or net not in (None, ""):
         lines.append(f"Model {_fmt(p_side,3)} | Gross {_fmt(gross,3)} | Net {_fmt(net,3)}")
     lines.append(f"Temp {_fmt(temp,2)}F | High {_fmt(high,2)}F")
     lines.append(f"Since high {_fmt(since,1,'m')} | Drop {_fmt(drop,2,'F')} | 15m slope {_fmt(slope,4)}")
     if failures:
         lines.append("Gate: " + ", ".join(str(x) for x in failures[:4]))
+    if payload.get("history_n") not in (None, ""):
+        lines.append(f"Empirical history n={payload.get('history_n')} | Terminal P {_fmt(payload.get('terminal_probability'),3)}")
+    if payload.get("reasoning"):
+        lines.append("Why: " + str(payload.get("reasoning"))[:280])
     if payload.get("near_control_signal"):
         lines.append(
             "Near control: time "
@@ -178,7 +185,9 @@ def main() -> int:
     p.add_argument("--tournament-fills", type=Path, default=Path("/data/weather/live/weather_company_tournament_fills.jsonl"))
     p.add_argument("--diagnostic-signals", type=Path, default=Path("/data/weather/live/weather_company_diagnostic_signals.jsonl"))
     p.add_argument("--diagnostic-fills", type=Path, default=Path("/data/weather/live/weather_company_diagnostic_fills.jsonl"))
-    p.add_argument("--collector-health", type=Path, default=Path("/data/weather/live/kalshi_l2_health.json"))
+    p.add_argument("--remaining-heating-signals", type=Path, default=Path("/data/weather/live/remaining_heating_shadow_signals.jsonl"))
+    p.add_argument("--alpha-signals", type=Path, default=Path("/data/weather/live/live_alpha_signals.jsonl"))
+    p.add_argument("--collector-health", type=Path, default=Path("/data/weather/status/kalshi_l2_archive_health.json"))
     args = p.parse_args()
 
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
@@ -197,6 +206,8 @@ def main() -> int:
         ("TOURNAMENT_FILL", args.tournament_fills),
         ("DIAGNOSTIC_SIGNAL", args.diagnostic_signals),
         ("DIAGNOSTIC_FILL", args.diagnostic_fills),
+        ("V2_SHADOW_SIGNAL", args.remaining_heating_signals),
+        ("LIVE_ALPHA_SIGNAL", args.alpha_signals),
     ]
     tails = {kind: JsonlTail(path, start_at_end=not args.replay_existing) for kind, path in sources}
     state = load_state(args.state)

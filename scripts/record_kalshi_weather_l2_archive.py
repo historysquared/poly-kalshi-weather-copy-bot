@@ -18,7 +18,7 @@ import httpx
 import websockets
 
 from weather_alpha.live.kalshi_ws import WS_URL, websocket_auth_headers
-from weather_alpha.markets.kalshi_weather_series import ALL_HIGH_SERIES
+from weather_alpha.markets.kalshi_weather_series import ALL_DAILY_TEMPERATURE_SERIES
 
 BASE = "https://external-api.kalshi.com/trade-api/v2"
 SCHEMA_VERSION = 1
@@ -112,6 +112,23 @@ def load_ticker_cache(path: Path) -> list[str]:
     return sorted({str(x) for x in values or [] if x})
 
 
+def load_all_weather_catalog_tickers(path: Path) -> list[str]:
+    if not path.exists():
+        return []
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    tickers: set[str] = set()
+    for series in payload.get("active_series") or []:
+        if not isinstance(series, dict):
+            continue
+        for market in series.get("markets") or []:
+            if isinstance(market, dict) and market.get("ticker"):
+                tickers.add(str(market["ticker"]))
+    return sorted(tickers)
+
+
 def save_ticker_cache(path: Path, tickers: set[str] | list[str]) -> None:
     atomic_json(path, {"generated_at": utcnow().isoformat(), "collector_version": COLLECTOR_VERSION,
                        "tickers": sorted(set(tickers))})
@@ -142,7 +159,9 @@ def update_type_count(health: dict[str, Any], msg_type: str) -> None:
 
 async def run_connection(args, series: list[str], writer: HourlyWriter,
                          health: dict[str, Any], generation: int) -> None:
-    tickers = load_ticker_cache(args.ticker_cache)
+    tickers = load_all_weather_catalog_tickers(args.all_weather_catalog) if args.all_weather_catalog else []
+    if not tickers:
+        tickers = load_ticker_cache(args.ticker_cache)
     used_cache = bool(tickers)
     if not tickers:
         tickers = await discover_open_tickers(set(series), args.rest_timeout)
@@ -178,7 +197,7 @@ async def run_connection(args, series: list[str], writer: HourlyWriter,
         while True:
             now_mono = time.monotonic()
             if now_mono >= next_refresh and refresh_task is None and len(channel_sids) == len(CHANNELS):
-                refresh_task = asyncio.create_task(discover_open_tickers(set(series), args.rest_timeout))
+                refresh_task = asyncio.create_task(asyncio.to_thread(load_all_weather_catalog_tickers, args.all_weather_catalog)) if args.all_weather_catalog else asyncio.create_task(discover_open_tickers(set(series), args.rest_timeout))
                 next_refresh = float("inf")
             if refresh_task is not None and refresh_task.done():
                 fresh = set(refresh_task.result())
@@ -267,6 +286,8 @@ async def run_connection(args, series: list[str], writer: HourlyWriter,
 async def main_async(args) -> int:
     series = [x.strip().upper() for x in args.series.split(",") if x.strip()]
     health = health_template(series)
+    health["scope"] = "ALL_WEATHER_CATALOG" if args.all_weather_catalog else "CONFIGURED_SERIES"
+    health["catalog_path"] = str(args.all_weather_catalog) if args.all_weather_catalog else None
     writer = HourlyWriter(args.raw_dir, args.flush_every)
     generation = 0
     backoff = 1.0
@@ -292,13 +313,14 @@ async def main_async(args) -> int:
 
 def main() -> int:
     p = argparse.ArgumentParser(description="Read-only Kalshi weather L2 raw archive collector")
-    p.add_argument("--series", default=",".join(ALL_HIGH_SERIES))
+    p.add_argument("--series", default=",".join(ALL_DAILY_TEMPERATURE_SERIES))
     p.add_argument("--ws-url", default=WS_URL)
     p.add_argument("--key-id", default=os.getenv("KALSHI_API_KEY_ID") or os.getenv("KALSHI_ACCESS_KEY"))
     p.add_argument("--private-key-path", default=os.getenv("KALSHI_PRIVATE_KEY_PATH"))
     p.add_argument("--raw-dir", type=Path, default=Path("/data/weather/raw/kalshi_l2"))
     p.add_argument("--health-output", type=Path, default=Path("/data/weather/status/kalshi_l2_archive_health.json"))
     p.add_argument("--ticker-cache", type=Path, default=Path("/data/weather/status/kalshi_weather_open_tickers.json"))
+    p.add_argument("--all-weather-catalog", type=Path, default=None, help="Subscribe every ticker in a prebuilt Kalshi all-weather catalog")
     p.add_argument("--refresh-seconds", type=float, default=300.0)
     p.add_argument("--health-interval", type=float, default=2.0)
     p.add_argument("--flush-every", type=int, default=25)

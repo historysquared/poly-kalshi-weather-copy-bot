@@ -13,10 +13,11 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from weather_alpha.markets.kalshi_weather_resolver import enrich_catalog_record, resolve_weather_rules
+from weather_alpha.markets.kalshi_weather_series import ALL_DAILY_TEMPERATURE_SERIES
 from weather_alpha.markets.weather_catalog import classify_kalshi_market
 
 BASE = "https://external-api.kalshi.com/trade-api/v2"
-DEFAULT_SERIES = ("KXHIGHNY", "KXHIGHCHI", "KXHIGHMIA", "KXHIGHLAX", "KXHIGHDEN")
+DEFAULT_SERIES = ALL_DAILY_TEMPERATURE_SERIES
 
 
 def get_json(client: httpx.Client, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -47,7 +48,7 @@ def load_jsonl(path: Path, key: str) -> dict[str, dict[str, Any]]:
 
 
 def main() -> int:
-    p = argparse.ArgumentParser(description="Fetch all historical Kalshi daily-high weather markets for configured recurring series and resolve exact settlement truth")
+    p = argparse.ArgumentParser(description="Fetch historical Kalshi daily-temperature markets for configured recurring series and resolve exact settlement truth")
     p.add_argument("--series", default=",".join(DEFAULT_SERIES))
     p.add_argument("--start-date", type=date.fromisoformat, default=date(2026, 1, 1))
     p.add_argument("--end-date", type=date.fromisoformat, default=None)

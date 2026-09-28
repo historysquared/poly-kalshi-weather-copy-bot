@@ -7,6 +7,7 @@ from enum import StrEnum
 from typing import Any, Iterable
 
 from .contracts import ContractShape
+from .kalshi_weather_series import ALL_HIGH_SERIES, LOW_SERIES_BY_CITY
 
 
 class CatalogStatus(StrEnum):
@@ -58,8 +59,8 @@ _TEMP_TERMS = re.compile(
 _PRECIP_TERMS = re.compile(r"\b(?:rainfall|precipitation|snowfall)\b", re.I)
 # Confirmed daily-temperature series used by the reference implementations.
 # Deliberately exact, not KXHIGH*: KXHIGHINFLATION is not weather.
-_KNOWN_HIGH_SERIES = {"KXHIGHNY", "KXHIGHCHI", "KXHIGHMIA", "KXHIGHLAX", "KXHIGHDEN"}
-_KNOWN_LOW_SERIES: set[str] = set()
+_KNOWN_HIGH_SERIES = set(ALL_HIGH_SERIES)
+_KNOWN_LOW_SERIES: set[str] = set(LOW_SERIES_BY_CITY.values())
 _STATION = re.compile(r"\bK[A-Z]{3}\b")
 _NWS_SOURCE = re.compile(r"(?:National Weather Service|\bNWS\b|Climatological Report|Daily Climate Report|CLI)", re.I)
 _DATE = re.compile(r"\b(20\d{2})[-/](\d{1,2})[-/](\d{1,2})\b")

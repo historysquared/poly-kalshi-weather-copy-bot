@@ -11,7 +11,7 @@ echo; echo "=== TMUX ==="
 tmux ls 2>/dev/null | grep -E '^weather-' || true
 
 echo; echo "=== CORE PROCESSES ==="
-ps -eo pid,etime,cmd | grep -E '[r]un_weather_company_(paper_live|dashboard|forward_tournament|diagnostic_track).py|[s]core_weather_company_paper_settlements.py|[r]ecord_kalshi_weather_l2.py|[t]elegram_weather_paper_watcher.py|[b]uild_unified_signal_scorecard.py' || true
+ps -eo pid,etime,cmd | grep -E '[r]un_weather_company_(paper_live|dashboard|forward_tournament|diagnostic_track).py|[r]un_remaining_heating_shadow.py|[r]un_live_alpha_shadow.py|[r]ecord_polymarket_us_weather.py|[s]core_weather_company_paper_settlements.py|[r]ecord_kalshi_weather_l2(_archive)?.py|[t]elegram_weather_paper_watcher.py|[b]uild_unified_signal_scorecard.py' || true
 
 echo; echo "=== LIVE FILE FRESHNESS ==="
 for f in weather_company_dashboard.json weather_company_paper_state.json weather_company_tournament_state.json weather_company_diagnostic_state.json weather_signal_scorecard.json; do
@@ -44,7 +44,12 @@ sed -n '1,24p' "$LIVE/weather_signal_scorecard.md" 2>/dev/null || true
 echo; echo "=== CREDENTIAL-GATED SERVICES ==="
 [[ -f /root/.config/weather-alpha/live.env ]] && echo "live.env: present" || echo "live.env: MISSING"
 [[ -f /root/.kalshi/weather_ws_private_key.pem ]] && echo "kalshi private key: present" || echo "kalshi private key: MISSING"
-tmux has-session -t weather-l2 2>/dev/null && echo "weather-l2: running" || echo "weather-l2: not running"
+systemctl is-active --quiet weather-collector-kalshi-l2.service 2>/dev/null && echo "weather-collector-kalshi-l2: running" || echo "weather-collector-kalshi-l2: NOT RUNNING"
+[[ -f /data/weather/status/kalshi_l2_archive_health.json ]] && stat -c "collector health: %y %s bytes" /data/weather/status/kalshi_l2_archive_health.json || echo "collector health: MISSING"
+tmux has-session -t weather-poly-us 2>/dev/null && echo "weather-poly-us: running" || echo "weather-poly-us: not running"
+[[ -f /data/weather/status/polymarket_us_weather_health.json ]] && stat -c "poly-us health: %y %s bytes" /data/weather/status/polymarket_us_weather_health.json || echo "poly-us health: MISSING"
+tmux has-session -t weather-v2-shadow 2>/dev/null && echo "weather-v2-shadow: running" || echo "weather-v2-shadow: not running"
+tmux has-session -t weather-alpha-shadow 2>/dev/null && echo "weather-alpha-shadow: running" || echo "weather-alpha-shadow: not running"
 tmux has-session -t weather-telegram 2>/dev/null && echo "weather-telegram: running" || echo "weather-telegram: not running"
 
 echo; echo "=== RECENT PROVIDER ERRORS ==="

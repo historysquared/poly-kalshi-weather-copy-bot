@@ -4,17 +4,17 @@ This file contains human judgment only. Runtime facts, process health, commit ha
 
 ## Current priorities
 
-1. Preserve irrecoverable Kalshi L2 history continuously.
-2. Separate collectors from strategy deployment and give collectors a manual/tagged release cadence.
-3. Add minimal stale/dead/recovered alerts plus an external dead-man heartbeat.
-4. Publish the audited unified branch to GitHub and make GitHub the durable code/task source of truth.
-5. Extend frozen settlement and remaining-heating tests without retuning them on the added sample.
-6. Continue contrail research only as an incremental feature beyond NBM + causal surface state.
+1. Preserve irrecoverable Kalshi L2 history continuously and expand market collection to the current daily-temperature universe.
+2. Build a persistent all-weather Kalshi + Polymarket US catalog; discovery is broader than strategy eligibility.
+3. Keep structural-alpha and remaining-heating v2 shadow signals plus Telegram delivery running; label diagnostic/control signals separately from alpha; add stale/dead/recovered collector alerts plus an external dead-man heartbeat.
+4. Separate collectors from strategy deployment and give collectors a manual/tagged release cadence.
+5. Compact duplicate JSONL research streams and archive raw truth data under the retention plan in `MARKET_UNIVERSE_AND_STORAGE_PLAN.md`.
+6. Extend frozen settlement and remaining-heating tests without retuning them on the added sample.
+7. Continue contrail research only as an incremental feature beyond NBM + causal surface state.
 
 ## Current blockers
 
-- Telegram bot token/chat ID are not installed yet.
-- ASOS, market-snapshot, and contrail collection are not yet fully separated from strategy/research processes.
+- ASOS, market-snapshot, Polymarket US, and contrail collection are not yet fully separated into durable collector services.
 - The historical strategy samples remain too small for promotion despite positive point estimates.
 - Recent historical L2 cannot be reconstructed for periods that were not recorded live.
 

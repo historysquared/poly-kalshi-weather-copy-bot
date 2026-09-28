@@ -1,0 +1,11 @@
+[Unit]
+Description=PredictionBots Kalshi All-Weather Live Catalog
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/weather-alpha-collector-release
+Environment=PYTHONPATH=/opt/weather-alpha-collector-release
+ExecStart=/opt/weather-alpha-signal-pipeline/.venv/bin/python /opt/weather-alpha-collector-release/scripts/build_kalshi_all_weather_live_catalog.py

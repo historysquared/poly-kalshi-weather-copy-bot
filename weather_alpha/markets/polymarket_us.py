@@ -9,7 +9,10 @@ import httpx
 
 from .contracts import POLYMARKET_US_STATIONS, ContractShape, parse_temperature_outcome
 
-POLYMARKET_US_API = "https://api.polymarket.us"
+# Public discovery/books/BBO use the gateway. The api host is for authenticated
+# resources in the official Polymarket US SDK.
+POLYMARKET_US_GATEWAY = "https://gateway.polymarket.us"
+POLYMARKET_US_API = POLYMARKET_US_GATEWAY
 
 _TEMP_MARKET = re.compile(
     r"(?:\btemperature\b|\btemp\b|\bdaily\s+(?:high|low)\b|\b(?:highest|lowest|high|low)\s+temperature\b|°\s*[FC]\b)",
@@ -143,8 +146,11 @@ class PolymarketUSClient:
                     out[normalized.market_slug] = normalized
         return list(out.values())
 
-    def _list_events(self, *, offset: int, limit: int, active: bool | None, closed: bool | None) -> list[dict[str, Any]]:
+    def _list_events(self, *, offset: int, limit: int, active: bool | None, closed: bool | None,
+                     tag_slug: str | None = None) -> list[dict[str, Any]]:
         params: dict[str, Any] = {"offset": offset, "limit": limit}
+        if tag_slug:
+            params["tag_slug"] = tag_slug
         if active is not None:
             params["active"] = str(active).lower()
         if closed is not None:
@@ -156,21 +162,36 @@ class PolymarketUSClient:
         rows = payload.get("events", []) if isinstance(payload, dict) else []
         return [dict(row) for row in rows if isinstance(row, dict)]
 
-    def discover_weather(self, *, include_closed: bool = False, max_pages: int = 100) -> list[PolymarketUSOutcome]:
-        found: dict[str, PolymarketUSOutcome] = {}
+    def discover_weather_events(self, *, include_closed: bool = False, max_pages: int = 100) -> list[dict[str, Any]]:
+        """Return raw official US events carrying the weather tag.
+
+        Keeping raw discovery separate from daily-temperature normalization ensures
+        non-temperature weather contracts are cataloged even when no strategy model
+        supports them yet.
+        """
+        found: dict[str, dict[str, Any]] = {}
         for page in range(max_pages):
             rows = self._list_events(
                 offset=page * 100,
                 limit=100,
                 active=None if include_closed else True,
                 closed=None if include_closed else False,
+                tag_slug="weather",
             )
             if not rows:
                 break
-            for item in self.normalize_events(rows):
-                found[item.market_slug] = item
+            for event in rows:
+                key = str(event.get("id") or event.get("slug") or "")
+                if key:
+                    found[key] = event
             if len(rows) < 100:
                 break
+        return list(found.values())
+
+    def discover_weather(self, *, include_closed: bool = False, max_pages: int = 100) -> list[PolymarketUSOutcome]:
+        found: dict[str, PolymarketUSOutcome] = {}
+        for item in self.normalize_events(self.discover_weather_events(include_closed=include_closed, max_pages=max_pages)):
+            found[item.market_slug] = item
         return sorted(found.values(), key=lambda x: (x.settlement_date or date.max, x.event_slug, x.market_slug))
 
     def market_book(self, slug: str) -> dict[str, Any]:

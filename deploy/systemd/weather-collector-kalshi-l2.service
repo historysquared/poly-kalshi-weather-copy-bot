@@ -7,11 +7,11 @@ StartLimitIntervalSec=0
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/opt/weather-alpha-signal-pipeline
+WorkingDirectory=/opt/weather-alpha-collector-release
 EnvironmentFile=/root/.config/weather-alpha/live.env
-Environment=PYTHONPATH=/opt/weather-alpha-signal-pipeline
+Environment=PYTHONPATH=/opt/weather-alpha-collector-release
 ExecStartPre=/usr/bin/test -r /root/.kalshi/weather_ws_private_key.pem
-ExecStart=/opt/weather-alpha-signal-pipeline/.venv/bin/python scripts/record_kalshi_weather_l2_archive.py --raw-dir /data/weather/raw/kalshi_l2 --health-output /data/weather/status/kalshi_l2_archive_health.json --ticker-cache /data/weather/status/kalshi_weather_open_tickers.json
+ExecStart=/opt/weather-alpha-signal-pipeline/.venv/bin/python /opt/weather-alpha-collector-release/scripts/record_kalshi_weather_l2_archive.py --all-weather-catalog /data/weather/status/kalshi_all_weather_live_catalog.json --raw-dir /data/weather/raw/kalshi_l2 --health-output /data/weather/status/kalshi_l2_archive_health.json --ticker-cache /data/weather/status/kalshi_weather_open_tickers.json
 Restart=always
 RestartSec=5
 TimeoutStopSec=20
