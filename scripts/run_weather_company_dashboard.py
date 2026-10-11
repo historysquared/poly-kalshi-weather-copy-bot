@@ -11,6 +11,7 @@ from pathlib import Path
 
 from weather_alpha.backtest.causal_settlement import TimedTemperature, lock_gate, surface_state
 from weather_alpha.providers.live_surface import fetch_live_temperature_series
+from weather_alpha.ops.health import StrategyHealth
 from weather_alpha.settlement.reconstruction import local_standard_settlement_window
 from weather_alpha.settlement.stations import station_clock
 import scripts.run_experimental_weather_company_paper as paper
@@ -151,6 +152,7 @@ def build_snapshot(args) -> dict:
             min_minutes_since_high=args.min_minutes_since_high,
             min_drop_from_high_f=args.min_drop_from_high_f,
             max_positive_slope_f_per_min=args.max_positive_slope,
+            require_slope=True,
         )
         row["lock_gate_pass"] = lock_pass
         row["lock_gate_reasons"] = list(lock_reasons)
@@ -359,12 +361,24 @@ def main() -> int:
     args = p.parse_args()
     if args.loop_seconds < 10:
         raise SystemExit("--loop-seconds must be >=10")
+    health = StrategyHealth("weather_company_dashboard")
     print("mode=WEATHER_COMPANY_PAPER_DASHBOARD live_order_submission=false snapshot_history=true", flush=True)
     while True:
         try:
             snap = build_snapshot(args)
             write_outputs(args, snap)
             c = snap["counts"]
+            observation_errors = [r.get("error") for r in snap.get("rows", []) if r.get("decision") == "OBSERVATION_ERROR"]
+            missing_slope = [r.get("station") for r in snap.get("rows", []) if r.get("in_settlement_window") and r.get("slope_15m_f_per_min") in (None, "")]
+            if observation_errors or missing_slope:
+                health.report(
+                    "DEGRADED", "REQUIRED_SURFACE_DATA_INCOMPLETE",
+                    generated_at=snap.get("generated_at"), observation_errors=observation_errors[:10],
+                    missing_slope_stations=sorted({str(x) for x in missing_slope if x})[:20],
+                    events=c.get("events"), eligible=c.get("eligible"),
+                )
+            else:
+                health.report("OK", "CYCLE_OK", generated_at=snap.get("generated_at"), events=c.get("events"), eligible=c.get("eligible"))
             print(
                 f"dashboard generated={snap['generated_at']} events={c['events']} eligible={c['eligible']} "
                 f"pending={c['pending']} traded={c['traded_events']} quotes={c['audited_contract_quotes']}",
@@ -374,6 +388,7 @@ def main() -> int:
             raise
         except Exception as exc:
             print(f"dashboard_error={type(exc).__name__}:{exc}", flush=True)
+            health.report("ERROR", f"{type(exc).__name__}:{exc}")
         time.sleep(args.loop_seconds)
 
 

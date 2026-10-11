@@ -4,7 +4,11 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main]
+    branches:
+      - main
+      - 'codex/**'
+      - 'chatgpt/**'
+      - 'archive/**'
   workflow_dispatch:
 
 jobs:
@@ -24,3 +28,23 @@ jobs:
         run: pytest -q
       - name: Compile scripts
         run: python -m compileall -q weather_alpha scripts
+      - name: Runtime import and CLI smoke
+        run: |
+          set -euo pipefail
+          python - <<'PYCODE'
+          import runpy
+          from pathlib import Path
+          for script in sorted(Path('scripts').glob('*.py')):
+              runpy.run_path(str(script), run_name=f'ci_import_{script.stem}')
+          PYCODE
+          for script in scripts/*.py; do
+            if grep -q 'ArgumentParser' "$script"; then
+              PYTHONPATH=. python "$script" --help >/dev/null
+            fi
+          done
+      - name: Deployment script syntax and dry-run
+        run: |
+          set -euo pipefail
+          bash -n scripts/install_contrail_current_timer.sh scripts/start_paper_strategy_stack.sh
+          ROOT=/opt/weather-alpha-strategy-release SOURCE_ROOT="$PWD" bash scripts/install_contrail_current_timer.sh --dry-run >/dev/null
+          ROOT="$PWD" PYTHON="$(command -v python)" bash scripts/start_paper_strategy_stack.sh --dry-run >/dev/null

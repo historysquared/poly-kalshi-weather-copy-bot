@@ -18,6 +18,14 @@ def parse_date(value: str) -> date:
     return date.fromisoformat(value)
 
 
+def result_exit_code(fetch_errors: int, total_fetches: int, allow_partial: bool) -> int:
+    if fetch_errors == 0:
+        return 0
+    if allow_partial and 0 < fetch_errors < total_fetches:
+        return 0
+    return 2
+
+
 def local_day_bounds(day: date, tz_name: str) -> tuple[datetime, datetime]:
     tz = ZoneInfo(tz_name)
     start = datetime.combine(day, time(0), tzinfo=tz)
@@ -110,12 +118,29 @@ async def main_async(args: argparse.Namespace) -> int:
             if i % 100 == 0 or i == len(tasks):
                 print(f"progress={i}/{len(tasks)}", flush=True)
 
+    errors = [r for r in rows if r.get("error")]
+    if args.merge_existing and args.output.exists():
+        try:
+            existing = json.loads(args.output.read_text(encoding="utf-8"))
+        except Exception as exc:
+            raise RuntimeError(f"cannot merge existing contrail history: {type(exc).__name__}:{exc}") from exc
+        merged = {(str(r.get("location_key")), str(r.get("local_date"))): r for r in existing if isinstance(r, dict)}
+        for row in rows:
+            if not row.get("error"):
+                merged[(str(row.get("location_key")), str(row.get("local_date")))] = row
+        rows = list(merged.values())
     rows.sort(key=lambda x: (x.get("local_date", ""), x.get("location_key", "")))
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(rows, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    errors = [r for r in rows if r.get("error")]
-    print(f"output={args.output} rows={len(rows)} errors={len(errors)}")
-    return 0 if not errors else 2
+    tmp = args.output.with_suffix(args.output.suffix + ".tmp")
+    tmp.write_text(json.dumps(rows, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    tmp.replace(args.output)
+    successful_fetches = len(days) * len(locations) - len(errors)
+    print(
+        f"output={args.output} rows={len(rows)} successful_fetches={successful_fetches} "
+        f"fetch_errors={len(errors)}",
+        flush=True,
+    )
+    return result_exit_code(len(errors), len(days) * len(locations), args.allow_partial)
 
 
 def main() -> int:
@@ -127,6 +152,11 @@ def main() -> int:
     p.add_argument("--radius-km", type=float, default=150.0)
     p.add_argument("--concurrency", type=int, default=8)
     p.add_argument("--timeout", type=float, default=60.0)
+    p.add_argument("--merge-existing", action="store_true", help="merge requested dates into an existing output file")
+    p.add_argument(
+        "--allow-partial", action="store_true",
+        help="return success when at least one requested location/day succeeds; failed rows remain absent/preserved",
+    )
     args = p.parse_args()
     return asyncio.run(main_async(args))
 

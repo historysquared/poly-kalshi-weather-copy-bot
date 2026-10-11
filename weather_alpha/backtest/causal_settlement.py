@@ -74,6 +74,7 @@ def lock_gate(
     min_minutes_since_high: Decimal = Decimal("60"),
     min_drop_from_high_f: Decimal = Decimal("1.0"),
     max_positive_slope_f_per_min: Decimal = Decimal("0.02"),
+    require_slope: bool = False,
 ) -> tuple[bool, tuple[str, ...]]:
     reasons: list[str] = []
     if state.high_so_far_f is None or state.latest_temp_f is None:
@@ -82,7 +83,10 @@ def lock_gate(
         reasons.append("HIGH_NOT_STALE_ENOUGH")
     if state.drop_from_high_f is None or state.drop_from_high_f < min_drop_from_high_f:
         reasons.append("INSUFFICIENT_DROP_FROM_HIGH")
-    if state.slope_15m_f_per_min is not None and state.slope_15m_f_per_min > max_positive_slope_f_per_min:
+    if state.slope_15m_f_per_min is None:
+        if require_slope:
+            reasons.append("SLOPE_UNAVAILABLE")
+    elif state.slope_15m_f_per_min > max_positive_slope_f_per_min:
         reasons.append("TEMPERATURE_STILL_RISING")
     return (len(reasons) == 0, tuple(reasons))
 

@@ -8,9 +8,13 @@ from __future__ import annotations
 import argparse
 import json
 import time
+from decimal import Decimal, ROUND_CEILING
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from weather_alpha.ops.health import StrategyHealth
+from weather_alpha.markets.kalshi_weather_series import ALL_DAILY_TEMPERATURE_SERIES
 
 
 def D(value: Any) -> float | None:
@@ -53,6 +57,54 @@ def latest_snapshot(path: Path, max_bytes: int = 8_000_000) -> tuple[str | None,
     return latest, [row for row in rows if str(row.get("snapshot_time")) == latest]
 
 
+def _fee_for_price(value: Any) -> float:
+    p = D(value)
+    if p is None:
+        return 0.0
+    raw = Decimal("0.07") * Decimal(str(p)) * (Decimal("1") - Decimal(str(p)))
+    return float((raw * Decimal("100")).to_integral_value(rounding=ROUND_CEILING) / Decimal("100"))
+
+
+def catalog_snapshot(path: Path) -> tuple[str | None, list[dict[str, Any]]]:
+    if not path.exists():
+        return None, []
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None, []
+    generated = str(payload.get("generated_at") or "") or None
+    wanted = set(ALL_DAILY_TEMPERATURE_SERIES)
+    rows: list[dict[str, Any]] = []
+    for series in payload.get("active_series") or []:
+        if not isinstance(series, dict) or str(series.get("ticker") or "") not in wanted:
+            continue
+        source_names = [str(x.get("name") or "") for x in (series.get("settlement_sources") or []) if isinstance(x, dict)]
+        source_family = "WEATHER_COMPANY" if any("Weather Company" in x for x in source_names) else "UNKNOWN"
+        for market in series.get("markets") or []:
+            if not isinstance(market, dict):
+                continue
+            strike = str(market.get("strike_type") or "").lower()
+            shape = {"between": "bucket", "less": "below", "greater": "above"}.get(strike, strike)
+            yes_ask = D(market.get("yes_ask_dollars"))
+            no_ask = D(market.get("no_ask_dollars"))
+            rows.append({
+                "snapshot_time": generated,
+                "event_id": market.get("event_ticker"),
+                "ticker": market.get("ticker"),
+                "series": series.get("ticker"),
+                "shape": shape,
+                "lower": market.get("floor_strike"),
+                "upper": market.get("cap_strike"),
+                "yes_ask": yes_ask,
+                "no_ask": no_ask,
+                "estimated_yes_taker_fee_per_contract": _fee_for_price(yes_ask),
+                "estimated_no_taker_fee_per_contract": _fee_for_price(no_ask),
+                "source_family": source_family,
+                "settlement_date": None,
+            })
+    return generated, rows
+
+
 def load_state(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -68,8 +120,23 @@ def save_state(path: Path, state: dict[str, Any]) -> None:
     tmp.replace(path)
 
 
-def fee(row: dict[str, Any]) -> float:
-    return D(row.get("estimated_taker_fee_per_contract")) or 0.0
+def fee(row: dict[str, Any], side: str | None = None) -> float:
+    generic = D(row.get("estimated_taker_fee_per_contract"))
+    if side == "YES":
+        explicit = D(row.get("estimated_yes_taker_fee_per_contract"))
+        if explicit is not None:
+            return explicit
+        if generic is not None:
+            return generic
+        return _fee_for_price(row.get("yes_ask"))
+    if side == "NO":
+        explicit = D(row.get("estimated_no_taker_fee_per_contract"))
+        if explicit is not None:
+            return explicit
+        if generic is not None:
+            return generic
+        return _fee_for_price(row.get("no_ask"))
+    return generic or 0.0
 
 
 def signal_key(row: dict[str, Any]) -> str:
@@ -88,7 +155,7 @@ def ladder_signals(group: list[dict[str, Any]], snapshot: str, min_locked_edge: 
     station = str(group[0].get("station") or "")
     settlement_date = group[0].get("settlement_date")
     out: list[dict[str, Any]] = []
-    yes_costs = [(D(row.get("yes_ask")), fee(row)) for row in group]
+    yes_costs = [(D(row.get("yes_ask")), fee(row, "YES")) for row in group]
     if all(ask is not None for ask, _ in yes_costs):
         total = sum(float(ask) + f for ask, f in yes_costs if ask is not None)
         edge = 1.0 - total
@@ -101,7 +168,7 @@ def ladder_signals(group: list[dict[str, Any]], snapshot: str, min_locked_edge: 
                 "reasoning": f"Complete exhaustive ladder costs {total:.3f} after quoted fees for fixed 1.000 payout.",
                 "legs": len(group), "live_order_submission": False,
             })
-    no_costs = [(D(row.get("no_ask")), fee(row)) for row in group]
+    no_costs = [(D(row.get("no_ask")), fee(row, "NO")) for row in group]
     if all(ask is not None for ask, _ in no_costs):
         total = sum(float(ask) + f for ask, f in no_costs if ask is not None)
         payout = float(len(group) - 1)
@@ -141,7 +208,7 @@ def monotonic_signals(group: list[dict[str, Any]], snapshot: str, basis_margin_f
         ask = D(row.get("yes_ask" if side == "YES" else "no_ask"))
         if ask is None or ask > max_price:
             continue
-        gap = 1.0 - ask - fee(row)
+        gap = 1.0 - ask - fee(row, side)
         if gap < min_price_gap:
             continue
         out.append({
@@ -160,21 +227,42 @@ def monotonic_signals(group: list[dict[str, Any]], snapshot: str, basis_margin_f
     return out
 
 
-def run_cycle(args: argparse.Namespace, state: dict[str, Any]) -> int:
-    snapshot, rows = latest_snapshot(args.contract_history)
+def run_cycle(args: argparse.Namespace, state: dict[str, Any], health: StrategyHealth) -> int:
+    snapshot, rows = catalog_snapshot(args.catalog)
+    enriched_snapshot, enriched_rows = latest_snapshot(args.contract_history)
+    enriched_by_ticker = {str(r.get("ticker") or ""): r for r in enriched_rows}
+    for row in rows:
+        extra = enriched_by_ticker.get(str(row.get("ticker") or ""))
+        if extra:
+            for key in ("station", "settlement_date", "latest_temp_f", "high_so_far_f", "minutes_since_high", "drop_from_high_f", "slope_15m_f_per_min"):
+                if extra.get(key) is not None:
+                    row[key] = extra.get(key)
     if not snapshot or not rows:
         print("alpha_shadow no_snapshot", flush=True)
+        health.report("ERROR", "NO_CATALOG_SNAPSHOT")
         return 0
     snap_dt = datetime.fromisoformat(snapshot.replace("Z", "+00:00")).astimezone(timezone.utc)
     age = (datetime.now(timezone.utc) - snap_dt).total_seconds()
     if age > args.max_snapshot_age_seconds:
         print(f"alpha_shadow stale_snapshot age_s={age:.1f}", flush=True)
+        health.report("ERROR", "STALE_CONTRACT_SNAPSHOT", age_seconds=age)
         return 0
     by_event: dict[str, list[dict[str, Any]]] = {}
     for row in rows:
         event_id = str(row.get("event_id") or "")
         if event_id:
             by_event.setdefault(event_id, []).append(row)
+    if len(by_event) < args.minimum_event_coverage:
+        health.report(
+            "DEGRADED", "UNIVERSE_COVERAGE_INCOMPLETE", snapshot_time=snapshot,
+            events=len(by_event), required_events=args.minimum_event_coverage,
+            input=str(args.catalog),
+        )
+        print(
+            f"alpha_shadow coverage_fail events={len(by_event)} required={args.minimum_event_coverage}",
+            flush=True,
+        )
+        return 0
     candidates: list[dict[str, Any]] = []
     for group in by_event.values():
         candidates.extend(ladder_signals(group, snapshot, args.min_locked_edge))
@@ -190,6 +278,10 @@ def run_cycle(args: argparse.Namespace, state: dict[str, Any]) -> int:
         emitted += 1
         print("LIVE_ALPHA_SIGNAL " + json.dumps(candidate, sort_keys=True), flush=True)
     state["last_snapshot"] = snapshot
+    health.report(
+        "OK", "CYCLE_OK", snapshot_time=snapshot, events=len(by_event),
+        candidates=len(candidates), emitted=emitted, total_seen=len(seen),
+    )
     save_state(args.state, state)
     print(f"alpha_shadow snapshot={snapshot} events={len(by_event)} candidates={len(candidates)} emitted={emitted} total_seen={len(seen)}", flush=True)
     return emitted
@@ -198,26 +290,30 @@ def run_cycle(args: argparse.Namespace, state: dict[str, Any]) -> int:
 def main() -> int:
     p = argparse.ArgumentParser(description="Read-only structural weather alpha shadow monitor")
     p.add_argument("--contract-history", type=Path, default=Path("/data/weather/live/weather_company_contract_history.jsonl"))
+    p.add_argument("--catalog", type=Path, default=Path("/data/weather/status/kalshi_all_weather_live_catalog.json"))
     p.add_argument("--signals-output", type=Path, default=Path("/data/weather/live/live_alpha_signals.jsonl"))
     p.add_argument("--state", type=Path, default=Path("/data/weather/live/live_alpha_state.json"))
     p.add_argument("--loop-seconds", type=int, default=30)
-    p.add_argument("--max-snapshot-age-seconds", type=int, default=180)
+    p.add_argument("--max-snapshot-age-seconds", type=int, default=900)
     p.add_argument("--min-locked-edge", type=float, default=0.02)
     p.add_argument("--basis-margin-f", type=float, default=2.0)
     p.add_argument("--max-lock-price", type=float, default=0.95)
     p.add_argument("--min-lock-price-gap", type=float, default=0.03)
+    p.add_argument("--minimum-event-coverage", type=int, default=40)
     p.add_argument("--once", action="store_true")
     args = p.parse_args()
     state = load_state(args.state)
+    health = StrategyHealth("live_structural_alpha_shadow")
     print("mode=LIVE_ALPHA_SHADOW live_order_submission=false strategies=LADDER_UNDERROUND,MONOTONIC_HIGH_LOCK", flush=True)
     while True:
         try:
-            run_cycle(args, state)
+            run_cycle(args, state, health)
         except KeyboardInterrupt:
             save_state(args.state, state)
             raise
         except Exception as exc:
             print(f"alpha_shadow_error={type(exc).__name__}:{exc}", flush=True)
+            health.report("ERROR", f"{type(exc).__name__}:{exc}")
         if args.once:
             break
         time.sleep(max(10, args.loop_seconds))

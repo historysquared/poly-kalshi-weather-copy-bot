@@ -1,0 +1,10 @@
+[Unit]
+Description=Weather Alpha append prior-day Google Contrails hourly history
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/weather-alpha-strategy-release
+EnvironmentFile=/root/.weather-contrails.env
+Environment=PYTHONPATH=/opt/weather-alpha-strategy-release
+ExecStart=/opt/weather-alpha-signal-pipeline/.venv/bin/python scripts/refresh_contrail_hourly_history.py

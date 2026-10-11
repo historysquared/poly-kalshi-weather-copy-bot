@@ -16,6 +16,7 @@ from weather_alpha.engine.recorder import StateStore
 from weather_alpha.research.remaining_heating import EmpiricalRemainingHeatingModel, EmpiricalRemainingHeatingStrategy
 from weather_alpha.settlement.reconstruction import local_standard_settlement_window
 from weather_alpha.settlement.stations import station_clock
+from weather_alpha.ops.health import StrategyHealth
 
 
 def D(value: Any) -> float | None:
@@ -101,6 +102,10 @@ def current_features(row: dict[str, Any], snapshot: datetime, model: EmpiricalRe
     }
     if current['high_so_far_f'] is None or current['latest_temp_f'] is None:
         return {}, 'MISSING_CAUSAL_SURFACE_STATE'
+    if current['minutes_since_high'] is None or current['drop_from_high_f'] is None:
+        return {}, 'MISSING_CAUSAL_SURFACE_DERIVATIVES'
+    if current['slope_15m_f_per_min'] is None:
+        return {}, 'MISSING_REQUIRED_SLOPE'
     pred = model.predict(current)
     if pred.median_residual_f is None:
         return {}, f'INSUFFICIENT_PRIOR_HISTORY:{pred.sample_count}'
@@ -118,14 +123,18 @@ def current_features(row: dict[str, Any], snapshot: datetime, model: EmpiricalRe
     return features, 'OK'
 
 
-def run_cycle(args: argparse.Namespace, model: EmpiricalRemainingHeatingModel, store: StateStore, state: dict[str, Any]) -> None:
+def run_cycle(args: argparse.Namespace, model: EmpiricalRemainingHeatingModel, store: StateStore, state: dict[str, Any], health: StrategyHealth) -> None:
     snap_text, rows = latest_snapshot(args.contract_history)
     if not snap_text or not rows:
-        print('v2_shadow no_snapshot', flush=True); return
+        print('v2_shadow no_snapshot', flush=True)
+        health.report('ERROR', 'NO_CONTRACT_SNAPSHOT')
+        return
     snap = datetime.fromisoformat(snap_text.replace('Z', '+00:00')).astimezone(timezone.utc)
     age = (datetime.now(timezone.utc) - snap).total_seconds()
     if age > args.max_snapshot_age_seconds:
-        print(f'v2_shadow stale_snapshot age_s={age:.1f}', flush=True); return
+        print(f'v2_shadow stale_snapshot age_s={age:.1f}', flush=True)
+        health.report('ERROR', 'STALE_CONTRACT_SNAPSHOT', age_seconds=age)
+        return
     by_event: dict[str, list[dict[str, Any]]] = {}
     for row in rows:
         event = str(row.get('event_id') or '')
@@ -133,6 +142,8 @@ def run_cycle(args: argparse.Namespace, model: EmpiricalRemainingHeatingModel, s
             by_event.setdefault(event, []).append(row)
     strategy = EmpiricalRemainingHeatingStrategy(min_edge=args.min_edge, min_samples=args.min_samples)
     decisions = 0; eligible_events = 0
+    feature_failures: dict[str, int] = {}
+    source_mismatch_events = 0
     for event, group in sorted(by_event.items()):
         representative = group[0]
         features, feature_status = current_features(representative, snap, model)
@@ -148,12 +159,15 @@ def run_cycle(args: argparse.Namespace, model: EmpiricalRemainingHeatingModel, s
                 signals, evaluation = strategy.evaluate(market, features)
                 candidates.append((row, market, signals[0] if signals else None, evaluation))
         else:
+            feature_failures[feature_status] = feature_failures.get(feature_status, 0) + 1
             append_jsonl(args.decisions_output, {'snapshot_time': snap.isoformat(), 'event_id': event,
                                                  'decision': feature_status, 'strategy': strategy.name})
             continue
         eligible = [x for x in candidates if x[2] is not None]
         best = max(eligible, key=lambda x: x[2].executable_edge) if eligible else None
         for row, market, signal, evaluation in candidates:
+            if str(evaluation.reason or '').startswith('INCOMPATIBLE_SETTLEMENT_SOURCE:'):
+                source_mismatch_events += 1
             is_best = best is not None and signal is best[2]
             if evaluation.emitted and not is_best:
                 evaluation = replace(evaluation, emitted=False,
@@ -189,6 +203,22 @@ def run_cycle(args: argparse.Namespace, model: EmpiricalRemainingHeatingModel, s
         append_jsonl(args.signals_output, detail)
         state['signaled_events'][event] = {'ticker': signal.contract_id, 'signal_time': snap.isoformat()}
         print('V2_SHADOW_SIGNAL ' + json.dumps(detail, sort_keys=True), flush=True)
+    if feature_failures:
+        health.report(
+            'DEGRADED', 'REQUIRED_DATA_OR_HISTORY_INCOMPLETE', snapshot_time=snap.isoformat(),
+            events=len(by_event), feature_failures=feature_failures, decisions=decisions,
+            eligible_events=eligible_events, source_mismatch_evaluations=source_mismatch_events,
+        )
+    elif source_mismatch_events:
+        health.report(
+            'ABSTAIN', 'SETTLEMENT_SOURCE_MISMATCH', snapshot_time=snap.isoformat(),
+            events=len(by_event), decisions=decisions, source_mismatch_evaluations=source_mismatch_events,
+        )
+    else:
+        health.report(
+            'OK', 'CYCLE_OK', snapshot_time=snap.isoformat(), events=len(by_event),
+            decisions=decisions, eligible_events=eligible_events,
+        )
     save_state(args.state, state)
     print(f'v2_shadow snapshot={snap.isoformat()} events={len(by_event)} decisions={decisions} eligible_events={eligible_events} '
           f'total_signaled={len(state.get("signaled_events", {}))}', flush=True)
@@ -213,16 +243,18 @@ def main() -> int:
     model = EmpiricalRemainingHeatingModel(history, k=args.k, min_samples=args.min_samples)
     store = StateStore(args.db)
     state = load_state(args.state)
+    health = StrategyHealth('terminal_high_empirical_v2')
     print('mode=TERMINAL_HIGH_EMPIRICAL_V2_SHADOW live_order_submission=false', flush=True)
     while True:
         try:
-            run_cycle(args, model, store, state)
+            run_cycle(args, model, store, state, health)
             if args.once:
                 break
         except KeyboardInterrupt:
             save_state(args.state, state); raise
         except Exception as exc:
             print(f'v2_shadow_error={type(exc).__name__}:{exc}', flush=True)
+            health.report('ERROR', f'{type(exc).__name__}:{exc}')
         time.sleep(max(10, args.loop_seconds))
 
 

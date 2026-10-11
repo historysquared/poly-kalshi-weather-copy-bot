@@ -114,10 +114,14 @@ async def main_async(args: argparse.Namespace) -> int:
         prior_cumulative: list[float] = []
         prior_evening: list[float] = []
         for day in history_dates:
-            hh = historical.get((key, day), {})
+            history_key = (key, day)
+            if history_key not in historical:
+                continue
+            hh = historical[history_key]
             prior_cumulative.append(float(sum(hh.get(h, 0) for h in range(completed_hour))))
             prior_evening.append(float(sum(hh.get(h, 0) for h in range(18, 21))))
         q90 = float(np.quantile(prior_evening, 0.90)) if prior_evening else None
+        prior_evening_percentile = midrank_percentile(prior_evening, float(previous_evening_count))
 
         station = str(loc.get("settlement_station") or "").upper()
         nbm = nbm_by_station.get(station)
@@ -136,9 +140,12 @@ async def main_async(args: argparse.Namespace) -> int:
             "local_time": local_now.isoformat(), "completed_through_hour": completed_hour,
             "today_contrail_count": today_count,
             "matched_window_percentile": midrank_percentile(prior_cumulative, float(today_count)),
+            "matched_history_n": len(prior_cumulative),
             "prior_evening_18_21_count": previous_evening_count,
+            "prior_evening_history_n": len(prior_evening),
             "prior_evening_q90": q90,
-            "prior_evening_top90": bool(q90 is not None and previous_evening_count >= q90),
+            "prior_evening_percentile": prior_evening_percentile,
+            "prior_evening_top90": bool(prior_evening_percentile is not None and prior_evening_percentile >= 90.0),
             "nbm00z_high_f": nbm.max_f if nbm else None,
             "nbm00z_sd_f": nbm.max_sd_f if nbm else None,
             "kalshi_top_ticker": top_ticker, "kalshi_top_title": top_title,

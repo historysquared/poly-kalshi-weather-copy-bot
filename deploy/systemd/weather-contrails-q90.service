@@ -1,0 +1,14 @@
+[Unit]
+Description=Weather Alpha contrail q90 forward research monitor
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/weather-alpha-strategy-release
+Environment=PYTHONPATH=/opt/weather-alpha-strategy-release
+ExecStart=/opt/weather-alpha-signal-pipeline/.venv/bin/python scripts/run_contrail_q90_monitor.py
+Restart=always
+RestartSec=15
+
+[Install]
+WantedBy=multi-user.target

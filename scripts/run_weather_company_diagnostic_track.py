@@ -12,6 +12,7 @@ from typing import Any
 import scripts.run_experimental_weather_company_paper as paper
 import scripts.run_weather_company_forward_tournament as tourney
 from weather_alpha.research.weather_company import WeatherCompanyResearchBridge
+from weather_alpha.ops.health import StrategyHealth
 
 TRACK = "D_DIAGNOSTIC_NO_LOCK"
 STRATEGY_ID = "weather_company_terminal_high_D_diagnostic_v1"
@@ -111,7 +112,10 @@ def evaluate(row: dict[str, Any], args: argparse.Namespace) -> dict[str, Any] | 
         return None
 
     net, gross, side, ask, p_side, fee = max(choices, key=lambda x: x[0])
-    if ask < args.price_floor:
+    required_missing = [x for x in control_failures if str(x).endswith("_MISSING")]
+    if required_missing:
+        decision = "DATA_INCOMPLETE"
+    elif ask < args.price_floor:
         decision = "PRICE_BELOW_FLOOR"
     elif gross < args.minimum_edge:
         decision = "EDGE_BELOW_MINIMUM"
@@ -185,12 +189,13 @@ def settle_pending(args: argparse.Namespace, state: dict[str, Any], bridge: Weat
     state["pending"] = remain
 
 
-def run_cycle(args: argparse.Namespace, state: dict[str, Any], bridge: WeatherCompanyResearchBridge) -> None:
+def run_cycle(args: argparse.Namespace, state: dict[str, Any], bridge: WeatherCompanyResearchBridge, health: StrategyHealth) -> None:
     settle_pending(args, state, bridge)
     snap_time, rows = tourney.latest_contract_snapshot(args.contract_history)
     now = datetime.now(timezone.utc)
     if not rows or snap_time is None:
         print("diagnostic_cycle no_dashboard_snapshot", flush=True)
+        health.report("ERROR", "NO_DASHBOARD_SNAPSHOT")
         return
     try:
         snap_dt = datetime.fromisoformat(snap_time.replace("Z", "+00:00"))
@@ -199,6 +204,7 @@ def run_cycle(args: argparse.Namespace, state: dict[str, Any], bridge: WeatherCo
         age_s = 999999
     if age_s > args.max_snapshot_age_seconds:
         print(f"diagnostic_cycle stale_dashboard_snapshot age_s={age_s:.1f}", flush=True)
+        health.report("ERROR", "STALE_DASHBOARD_SNAPSHOT", age_seconds=age_s)
         return
 
     by_event: dict[str, list[dict[str, Any]]] = {}
@@ -250,6 +256,18 @@ def run_cycle(args: argparse.Namespace, state: dict[str, Any], bridge: WeatherCo
             flush=True,
         )
 
+    missing_required = sum(v for k, v in lock_counts.items() if str(k).endswith("_MISSING"))
+    if missing_required:
+        health.report(
+            "DEGRADED", "REQUIRED_DATA_INCOMPLETE", snapshot_time=snap_time,
+            events=len(by_event), missing_required=missing_required,
+            missing_components=dict(lock_counts), decisions=dict(counts),
+        )
+    else:
+        health.report(
+            "OK", "CYCLE_OK", snapshot_time=snap_time, events=len(by_event),
+            decisions=dict(counts), control_lock_components=dict(lock_counts),
+        )
     save_state(args.state, state)
     print(
         f"diagnostic_cycle snapshot={snap_time} events={len(by_event)} decisions={dict(counts)} "
@@ -281,14 +299,16 @@ def main() -> int:
     print("diagnostic_only=true production_eligible=false lock_gate_bypassed=true", flush=True)
     state = load_state(args.state)
     bridge = WeatherCompanyResearchBridge(args.research_db, STRATEGY_ID)
+    health = StrategyHealth(STRATEGY_ID)
     while True:
         try:
-            run_cycle(args, state, bridge)
+            run_cycle(args, state, bridge, health)
         except KeyboardInterrupt:
             save_state(args.state, state)
             raise
         except Exception as exc:
             print(f"diagnostic_error={type(exc).__name__}:{exc}", flush=True)
+            health.report("ERROR", f"{type(exc).__name__}:{exc}")
             save_state(args.state, state)
         time.sleep(max(10, args.loop_seconds))
 

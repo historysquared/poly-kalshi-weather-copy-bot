@@ -36,6 +36,19 @@ def test_lock_gate_requires_stale_high_and_drop():
     assert reasons == ()
 
 
+def test_lock_gate_can_fail_closed_when_slope_is_required():
+    t0 = datetime(2026, 6, 10, 18, 0, tzinfo=timezone.utc)
+    obs = [
+        TimedTemperature(t0, Decimal("82.1")),
+        TimedTemperature(t0 + timedelta(minutes=70), Decimal("80.8")),
+    ]
+    state = surface_state(obs, as_of=t0 + timedelta(minutes=70))
+    assert state.slope_15m_f_per_min is None
+    ok, reasons = lock_gate(state, require_slope=True)
+    assert not ok
+    assert "SLOPE_UNAVAILABLE" in reasons
+
+
 def test_empirical_posterior_preserves_decimal_boundaries():
     samples = [Decimal("-0.4")] * 10 + [Decimal("0.0")] * 10 + [Decimal("0.6")] * 10
     post = empirical_settlement_posterior(
