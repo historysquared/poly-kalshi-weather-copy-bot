@@ -85,8 +85,6 @@ def catalog_snapshot(path: Path) -> tuple[str | None, list[dict[str, Any]]]:
                 continue
             strike = str(market.get("strike_type") or "").lower()
             shape = {"between": "bucket", "less": "below", "greater": "above"}.get(strike, strike)
-            yes_ask = D(market.get("yes_ask_dollars"))
-            no_ask = D(market.get("no_ask_dollars"))
             rows.append({
                 "snapshot_time": generated,
                 "event_id": market.get("event_ticker"),
@@ -95,14 +93,31 @@ def catalog_snapshot(path: Path) -> tuple[str | None, list[dict[str, Any]]]:
                 "shape": shape,
                 "lower": market.get("floor_strike"),
                 "upper": market.get("cap_strike"),
-                "yes_ask": yes_ask,
-                "no_ask": no_ask,
-                "estimated_yes_taker_fee_per_contract": _fee_for_price(yes_ask),
-                "estimated_no_taker_fee_per_contract": _fee_for_price(no_ask),
+                "yes_ask": None,
+                "no_ask": None,
+                "estimated_yes_taker_fee_per_contract": None,
+                "estimated_no_taker_fee_per_contract": None,
                 "source_family": source_family,
                 "settlement_date": None,
             })
     return generated, rows
+
+
+def load_live_bbo(path: Path) -> tuple[str | None, dict[str, dict[str, Any]]]:
+    if not path.exists():
+        return None, {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None, {}
+    generated = str(payload.get("generated_at") or "") or None
+    raw_quotes = payload.get("quotes") if isinstance(payload, dict) else None
+    quotes = {
+        str(ticker): row
+        for ticker, row in (raw_quotes or {}).items()
+        if ticker and isinstance(row, dict)
+    }
+    return generated, quotes
 
 
 def load_state(path: Path) -> dict[str, Any]:
@@ -120,8 +135,9 @@ def save_state(path: Path, state: dict[str, Any]) -> None:
     tmp.replace(path)
 
 
-def input_snapshot_key(catalog_snapshot: str, enriched_snapshot: str | None) -> str:
-    return f"{catalog_snapshot}|{enriched_snapshot or ''}"
+def input_snapshot_key(catalog_snapshot: str, bbo_snapshot: str,
+                       enriched_snapshot: str | None) -> str:
+    return f"{catalog_snapshot}|{bbo_snapshot}|{enriched_snapshot or ''}"
 
 
 def fee(row: dict[str, Any], side: str | None = None) -> float:
@@ -232,49 +248,91 @@ def monotonic_signals(group: list[dict[str, Any]], snapshot: str, basis_margin_f
 
 
 def run_cycle(args: argparse.Namespace, state: dict[str, Any], health: StrategyHealth) -> int:
-    snapshot, rows = catalog_snapshot(args.catalog)
-    enriched_snapshot, enriched_rows = latest_snapshot(args.contract_history)
-    enriched_by_ticker = {str(r.get("ticker") or ""): r for r in enriched_rows}
-    for row in rows:
-        extra = enriched_by_ticker.get(str(row.get("ticker") or ""))
-        if extra:
-            for key in ("station", "settlement_date", "latest_temp_f", "high_so_far_f", "minutes_since_high", "drop_from_high_f", "slope_15m_f_per_min"):
-                if extra.get(key) is not None:
-                    row[key] = extra.get(key)
-    if not snapshot or not rows:
-        print("alpha_shadow no_snapshot", flush=True)
+    catalog_time, rows = catalog_snapshot(args.catalog)
+    bbo_time, bbo_quotes = load_live_bbo(args.bbo)
+    if not catalog_time or not rows:
+        print("alpha_shadow no_catalog_snapshot", flush=True)
         health.report("ERROR", "NO_CATALOG_SNAPSHOT")
         return 0
-    snap_dt = datetime.fromisoformat(snapshot.replace("Z", "+00:00")).astimezone(timezone.utc)
-    age = (datetime.now(timezone.utc) - snap_dt).total_seconds()
-    if age > args.max_snapshot_age_seconds:
-        print(f"alpha_shadow stale_snapshot age_s={age:.1f}", flush=True)
-        health.report("ERROR", "STALE_CONTRACT_SNAPSHOT", age_seconds=age)
+    if not bbo_time or not bbo_quotes:
+        print("alpha_shadow no_bbo_snapshot", flush=True)
+        health.report("ERROR", "NO_LIVE_BBO_SNAPSHOT")
         return 0
-    current_input_key = input_snapshot_key(snapshot, enriched_snapshot)
+
+    now = datetime.now(timezone.utc)
+    catalog_dt = datetime.fromisoformat(catalog_time.replace("Z", "+00:00")).astimezone(timezone.utc)
+    bbo_dt = datetime.fromisoformat(bbo_time.replace("Z", "+00:00")).astimezone(timezone.utc)
+    catalog_age = (now - catalog_dt).total_seconds()
+    bbo_age = (now - bbo_dt).total_seconds()
+    if catalog_age > args.max_catalog_age_seconds:
+        print(f"alpha_shadow stale_catalog age_s={catalog_age:.1f}", flush=True)
+        health.report("ERROR", "STALE_MARKET_CATALOG", age_seconds=catalog_age)
+        return 0
+    if bbo_age > args.max_snapshot_age_seconds:
+        print(f"alpha_shadow stale_bbo age_s={bbo_age:.1f}", flush=True)
+        health.report("ERROR", "STALE_LIVE_BBO", age_seconds=bbo_age)
+        return 0
+
+    enriched_snapshot, enriched_rows = latest_snapshot(args.contract_history)
+    surface_fresh = False
+    if enriched_snapshot:
+        enriched_dt = datetime.fromisoformat(enriched_snapshot.replace("Z", "+00:00")).astimezone(timezone.utc)
+        surface_fresh = (now - enriched_dt).total_seconds() <= args.max_surface_age_seconds
+    enriched_by_ticker = {
+        str(r.get("ticker") or ""): r for r in enriched_rows
+    } if surface_fresh else {}
+
+    priced_rows: list[dict[str, Any]] = []
+    for row in rows:
+        ticker = str(row.get("ticker") or "")
+        quote = bbo_quotes.get(ticker)
+        if not quote:
+            continue
+        yes_ask = D(quote.get("yes_ask"))
+        no_ask = D(quote.get("no_ask"))
+        if yes_ask is None and no_ask is None:
+            continue
+        row["snapshot_time"] = bbo_time
+        row["yes_ask"] = yes_ask
+        row["no_ask"] = no_ask
+        row["estimated_yes_taker_fee_per_contract"] = _fee_for_price(yes_ask)
+        row["estimated_no_taker_fee_per_contract"] = _fee_for_price(no_ask)
+        row["quote_exchange_time"] = quote.get("exchange_time")
+        row["quote_receive_time"] = quote.get("local_receive_timestamp")
+        extra = enriched_by_ticker.get(ticker)
+        if extra:
+            for key in ("station", "settlement_date", "latest_temp_f", "high_so_far_f",
+                        "minutes_since_high", "drop_from_high_f", "slope_15m_f_per_min"):
+                if extra.get(key) is not None:
+                    row[key] = extra.get(key)
+        priced_rows.append(row)
+
+    current_input_key = input_snapshot_key(catalog_time, bbo_time, enriched_snapshot if surface_fresh else None)
     if state.get("last_input_snapshot") == current_input_key:
         print(f"alpha_shadow duplicate_snapshot key={current_input_key}", flush=True)
         return 0
+
     by_event: dict[str, list[dict[str, Any]]] = {}
-    for row in rows:
+    for row in priced_rows:
         event_id = str(row.get("event_id") or "")
         if event_id:
             by_event.setdefault(event_id, []).append(row)
     if len(by_event) < args.minimum_event_coverage:
         health.report(
-            "DEGRADED", "UNIVERSE_COVERAGE_INCOMPLETE", snapshot_time=snapshot,
+            "DEGRADED", "UNIVERSE_COVERAGE_INCOMPLETE", snapshot_time=bbo_time,
             events=len(by_event), required_events=args.minimum_event_coverage,
-            input=str(args.catalog),
+            bbo_quotes=len(bbo_quotes), input=str(args.bbo),
         )
         print(
             f"alpha_shadow coverage_fail events={len(by_event)} required={args.minimum_event_coverage}",
             flush=True,
         )
         return 0
+
     candidates: list[dict[str, Any]] = []
     for group in by_event.values():
-        candidates.extend(ladder_signals(group, snapshot, args.min_locked_edge))
-        candidates.extend(monotonic_signals(group, snapshot, args.basis_margin_f, args.max_lock_price, args.min_lock_price_gap))
+        candidates.extend(ladder_signals(group, bbo_time, args.min_locked_edge))
+        candidates.extend(monotonic_signals(group, bbo_time, args.basis_margin_f, args.max_lock_price, args.min_lock_price_gap))
     emitted = 0
     seen = state.setdefault("seen", {})
     for candidate in candidates:
@@ -282,17 +340,26 @@ def run_cycle(args: argparse.Namespace, state: dict[str, Any], health: StrategyH
         if key in seen:
             continue
         append_jsonl(args.signals_output, candidate)
-        seen[key] = {"signal_time": snapshot, "entry_ask": candidate.get("entry_ask")}
+        seen[key] = {"signal_time": bbo_time, "entry_ask": candidate.get("entry_ask")}
         emitted += 1
         print("LIVE_ALPHA_SIGNAL " + json.dumps(candidate, sort_keys=True), flush=True)
-    state["last_snapshot"] = snapshot
+
+    state["last_snapshot"] = bbo_time
     state["last_input_snapshot"] = current_input_key
+    status = "OK" if surface_fresh else "DEGRADED"
+    reason = "CYCLE_OK" if surface_fresh else "SURFACE_ENRICHMENT_STALE_OR_MISSING"
     health.report(
-        "OK", "CYCLE_OK", snapshot_time=snapshot, events=len(by_event),
-        candidates=len(candidates), emitted=emitted, total_seen=len(seen),
+        status, reason, snapshot_time=bbo_time, catalog_time=catalog_time,
+        surface_snapshot=enriched_snapshot, surface_fresh=surface_fresh,
+        events=len(by_event), candidates=len(candidates), emitted=emitted,
+        total_seen=len(seen), bbo_quotes=len(bbo_quotes),
     )
     save_state(args.state, state)
-    print(f"alpha_shadow snapshot={snapshot} events={len(by_event)} candidates={len(candidates)} emitted={emitted} total_seen={len(seen)}", flush=True)
+    print(
+        f"alpha_shadow snapshot={bbo_time} events={len(by_event)} candidates={len(candidates)} "
+        f"emitted={emitted} total_seen={len(seen)} surface_fresh={surface_fresh}",
+        flush=True,
+    )
     return emitted
 
 
@@ -300,10 +367,13 @@ def main() -> int:
     p = argparse.ArgumentParser(description="Read-only structural weather alpha shadow monitor")
     p.add_argument("--contract-history", type=Path, default=Path("/data/weather/live/weather_company_contract_history.jsonl"))
     p.add_argument("--catalog", type=Path, default=Path("/data/weather/status/kalshi_all_weather_live_catalog.json"))
+    p.add_argument("--bbo", type=Path, default=Path("/data/weather/status/kalshi_all_weather_bbo.json"))
     p.add_argument("--signals-output", type=Path, default=Path("/data/weather/live/live_alpha_signals.jsonl"))
     p.add_argument("--state", type=Path, default=Path("/data/weather/live/live_alpha_state.json"))
     p.add_argument("--loop-seconds", type=int, default=30)
-    p.add_argument("--max-snapshot-age-seconds", type=int, default=900)
+    p.add_argument("--max-snapshot-age-seconds", type=int, default=30)
+    p.add_argument("--max-catalog-age-seconds", type=int, default=25200)
+    p.add_argument("--max-surface-age-seconds", type=int, default=180)
     p.add_argument("--min-locked-edge", type=float, default=0.02)
     p.add_argument("--basis-margin-f", type=float, default=2.0)
     p.add_argument("--max-lock-price", type=float, default=0.95)

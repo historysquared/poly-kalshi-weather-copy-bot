@@ -1,4 +1,4 @@
-from scripts.run_live_alpha_shadow import input_snapshot_key, ladder_signals, monotonic_signals
+from scripts.run_live_alpha_shadow import input_snapshot_key, ladder_signals, load_live_bbo, monotonic_signals
 
 
 def base_row(shape, ticker, yes_ask, no_ask, lower=None, upper=None, high=80.0):
@@ -38,8 +38,19 @@ def test_monotonic_bucket_elimination_requires_buffer_and_price_gap():
     assert monotonic_signals([row], row["snapshot_time"], 2.0, 0.95, 0.03) == []
 
 
-def test_input_snapshot_key_changes_for_either_source():
-    base = input_snapshot_key("catalog-1", "enriched-1")
-    assert input_snapshot_key("catalog-1", "enriched-1") == base
-    assert input_snapshot_key("catalog-2", "enriched-1") != base
-    assert input_snapshot_key("catalog-1", "enriched-2") != base
+def test_input_snapshot_key_changes_for_any_source():
+    base = input_snapshot_key("catalog-1", "bbo-1", "enriched-1")
+    assert input_snapshot_key("catalog-1", "bbo-1", "enriched-1") == base
+    assert input_snapshot_key("catalog-2", "bbo-1", "enriched-1") != base
+    assert input_snapshot_key("catalog-1", "bbo-2", "enriched-1") != base
+    assert input_snapshot_key("catalog-1", "bbo-1", "enriched-2") != base
+
+
+def test_load_live_bbo(tmp_path):
+    path = tmp_path / "bbo.json"
+    path.write_text(
+        '{"generated_at":"2026-10-11T17:00:00+00:00","quotes":{"A":{"yes_ask":"0.40"},"B":null}}'
+    )
+    generated, quotes = load_live_bbo(path)
+    assert generated == "2026-10-11T17:00:00+00:00"
+    assert quotes == {"A": {"yes_ask": "0.40"}}

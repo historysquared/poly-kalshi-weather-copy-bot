@@ -1,13 +1,20 @@
 from pathlib import Path
 
+from datetime import datetime, timezone
+
 from scripts.record_kalshi_weather_l2_archive import (
+    bbo_payload,
+    book_quote,
     health_template,
     load_all_weather_catalog_series_count,
     load_all_weather_catalog_tickers,
     load_ticker_cache,
     market_series,
+    ticker_quote,
+    update_live_book_state,
     save_ticker_cache,
 )
+from weather_alpha.live.kalshi_ws import KalshiBook
 from weather_alpha.markets.kalshi_weather_series import (
     ALL_DAILY_TEMPERATURE_SERIES, ALL_HIGH_SERIES, LOW_SERIES_BY_CITY, SERIES_BY_CITY,
 )
@@ -61,3 +68,92 @@ def test_load_all_weather_catalog_series_count(tmp_path: Path):
     path = tmp_path / "catalog.json"
     path.write_text('{"active_series":[{"ticker":"A","markets":[]},{"ticker":"B","markets":[]},null]}')
     assert load_all_weather_catalog_series_count(path) == 2
+
+
+def test_ticker_quote_derives_binary_no_side():
+    q = ticker_quote(
+        {
+            "market_ticker": "KXTEST",
+            "time": "2026-10-11T17:00:00Z",
+            "ts_ms": 1,
+            "yes_bid_dollars": "0.3900",
+            "yes_ask_dollars": "0.4000",
+            "yes_bid_size_fp": "1.00",
+            "yes_ask_size_fp": "81.00",
+        },
+        datetime(2026, 10, 11, 17, 0, tzinfo=timezone.utc),
+    )
+    assert q is not None
+    assert q["yes_bid"] == "0.3900"
+    assert q["yes_ask"] == "0.4000"
+    assert q["no_bid"] == "0.6000"
+    assert q["no_ask"] == "0.6100"
+    assert q["no_bid_size"] == "81.00"
+    assert q["no_ask_size"] == "1.00"
+
+
+def test_book_quote_uses_orderbook_state_for_bbo_and_depth():
+    book = KalshiBook("KXTEST")
+    book.apply_snapshot(
+        {
+            "yes_dollars_fp": [["0.39", "2"], ["0.38", "3"]],
+            "no_dollars_fp": [["0.60", "5"], ["0.59", "7"]],
+            "ts": "2026-10-11T17:00:00Z",
+        },
+        42,
+    )
+    q = book_quote(book, datetime(2026, 10, 11, 17, 0, tzinfo=timezone.utc))
+    assert q["yes_bid"] == "0.39"
+    assert q["yes_ask"] == "0.40"
+    assert q["no_bid"] == "0.60"
+    assert q["no_ask"] == "0.61"
+    assert q["yes_bid_size"] == "2"
+    assert q["yes_ask_size"] == "5"
+    assert q["sequence"] == 42
+    assert q["yes_bid_depth_top5"] == "5"
+    assert q["yes_ask_depth_top5"] == "12"
+
+
+def test_bbo_payload_filters_to_daily_temperature_series():
+    now = datetime(2026, 10, 11, 17, 0, tzinfo=timezone.utc)
+    payload = bbo_payload(
+        {
+            "KXHIGHNY-26OCT12-B70.5": {"yes_ask": "0.40"},
+            "KXLOWTNYC-26OCT12-B50.5": {"yes_ask": "0.30"},
+            "KXGTEMP-27-P0": {"yes_ask": "0.55"},
+        },
+        generated_at=now,
+        health={"current_tickers": 3, "series_count": 2},
+    )
+    assert payload["quote_count"] == 2
+    assert set(payload["quotes"]) == {"KXHIGHNY-26OCT12-B70.5", "KXLOWTNYC-26OCT12-B50.5"}
+    assert payload["scope"] == "DAILY_TEMPERATURE_BBO_FROM_ALL_WEATHER_WS"
+
+
+def test_live_book_state_never_cross_contaminates_market_tickers():
+    received = datetime(2026, 10, 11, 17, 0, tzinfo=timezone.utc)
+    books = {}
+    quotes = {}
+    a = {
+        "type": "orderbook_snapshot", "seq": 1,
+        "msg": {
+            "market_ticker": "A",
+            "yes_dollars_fp": [["0.20", "2"]],
+            "no_dollars_fp": [["0.70", "3"]],
+        },
+    }
+    b = {
+        "type": "orderbook_snapshot", "seq": 2,
+        "msg": {
+            "market_ticker": "B",
+            "yes_dollars_fp": [["0.60", "4"]],
+            "no_dollars_fp": [["0.30", "5"]],
+        },
+    }
+    assert update_live_book_state(a, received, books, quotes) == "A"
+    assert update_live_book_state(b, received, books, quotes) == "B"
+    assert set(books) == {"A", "B"}
+    assert quotes["A"]["yes_bid"] == "0.20"
+    assert quotes["A"]["yes_ask"] == "0.30"
+    assert quotes["B"]["yes_bid"] == "0.60"
+    assert quotes["B"]["yes_ask"] == "0.70"
