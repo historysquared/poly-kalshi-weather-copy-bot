@@ -135,6 +135,10 @@ def run_cycle(args: argparse.Namespace, model: EmpiricalRemainingHeatingModel, s
         print(f'v2_shadow stale_snapshot age_s={age:.1f}', flush=True)
         health.report('ERROR', 'STALE_CONTRACT_SNAPSHOT', age_seconds=age)
         return
+    snapshot_key = snap.isoformat()
+    if state.get('last_snapshot') == snapshot_key:
+        print(f'v2_shadow duplicate_snapshot snapshot={snapshot_key}', flush=True)
+        return
     by_event: dict[str, list[dict[str, Any]]] = {}
     for row in rows:
         event = str(row.get('event_id') or '')
@@ -219,6 +223,7 @@ def run_cycle(args: argparse.Namespace, model: EmpiricalRemainingHeatingModel, s
             'OK', 'CYCLE_OK', snapshot_time=snap.isoformat(), events=len(by_event),
             decisions=decisions, eligible_events=eligible_events,
         )
+    state['last_snapshot'] = snapshot_key
     save_state(args.state, state)
     print(f'v2_shadow snapshot={snap.isoformat()} events={len(by_event)} decisions={decisions} eligible_events={eligible_events} '
           f'total_signaled={len(state.get("signaled_events", {}))}', flush=True)

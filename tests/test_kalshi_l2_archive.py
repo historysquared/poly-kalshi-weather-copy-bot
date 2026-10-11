@@ -2,6 +2,7 @@ from pathlib import Path
 
 from scripts.record_kalshi_weather_l2_archive import (
     health_template,
+    load_all_weather_catalog_series_count,
     load_all_weather_catalog_tickers,
     load_ticker_cache,
     market_series,
@@ -54,3 +55,9 @@ def test_load_all_weather_catalog_tickers(tmp_path: Path):
     path = tmp_path / "catalog.json"
     path.write_text('{"active_series":[{"markets":[{"ticker":"B"},{"ticker":"A"}]},{"markets":[{"ticker":"A"}]}]}')
     assert load_all_weather_catalog_tickers(path) == ["A", "B"]
+
+
+def test_load_all_weather_catalog_series_count(tmp_path: Path):
+    path = tmp_path / "catalog.json"
+    path.write_text('{"active_series":[{"ticker":"A","markets":[]},{"ticker":"B","markets":[]},null]}')
+    assert load_all_weather_catalog_series_count(path) == 2

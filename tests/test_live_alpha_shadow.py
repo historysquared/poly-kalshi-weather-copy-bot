@@ -1,4 +1,4 @@
-from scripts.run_live_alpha_shadow import ladder_signals, monotonic_signals
+from scripts.run_live_alpha_shadow import input_snapshot_key, ladder_signals, monotonic_signals
 
 
 def base_row(shape, ticker, yes_ask, no_ask, lower=None, upper=None, high=80.0):
@@ -36,3 +36,10 @@ def test_monotonic_bucket_elimination_requires_buffer_and_price_gap():
     assert signals[0]["strategy"] == "MONOTONIC_HIGH_LOCK_V1"
     row["high_so_far_f"] = 76.9
     assert monotonic_signals([row], row["snapshot_time"], 2.0, 0.95, 0.03) == []
+
+
+def test_input_snapshot_key_changes_for_either_source():
+    base = input_snapshot_key("catalog-1", "enriched-1")
+    assert input_snapshot_key("catalog-1", "enriched-1") == base
+    assert input_snapshot_key("catalog-2", "enriched-1") != base
+    assert input_snapshot_key("catalog-1", "enriched-2") != base

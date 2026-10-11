@@ -120,6 +120,10 @@ def save_state(path: Path, state: dict[str, Any]) -> None:
     tmp.replace(path)
 
 
+def input_snapshot_key(catalog_snapshot: str, enriched_snapshot: str | None) -> str:
+    return f"{catalog_snapshot}|{enriched_snapshot or ''}"
+
+
 def fee(row: dict[str, Any], side: str | None = None) -> float:
     generic = D(row.get("estimated_taker_fee_per_contract"))
     if side == "YES":
@@ -247,6 +251,10 @@ def run_cycle(args: argparse.Namespace, state: dict[str, Any], health: StrategyH
         print(f"alpha_shadow stale_snapshot age_s={age:.1f}", flush=True)
         health.report("ERROR", "STALE_CONTRACT_SNAPSHOT", age_seconds=age)
         return 0
+    current_input_key = input_snapshot_key(snapshot, enriched_snapshot)
+    if state.get("last_input_snapshot") == current_input_key:
+        print(f"alpha_shadow duplicate_snapshot key={current_input_key}", flush=True)
+        return 0
     by_event: dict[str, list[dict[str, Any]]] = {}
     for row in rows:
         event_id = str(row.get("event_id") or "")
@@ -278,6 +286,7 @@ def run_cycle(args: argparse.Namespace, state: dict[str, Any], health: StrategyH
         emitted += 1
         print("LIVE_ALPHA_SIGNAL " + json.dumps(candidate, sort_keys=True), flush=True)
     state["last_snapshot"] = snapshot
+    state["last_input_snapshot"] = current_input_key
     health.report(
         "OK", "CYCLE_OK", snapshot_time=snapshot, events=len(by_event),
         candidates=len(candidates), emitted=emitted, total_seen=len(seen),

@@ -129,6 +129,16 @@ def load_all_weather_catalog_tickers(path: Path) -> list[str]:
     return sorted(tickers)
 
 
+def load_all_weather_catalog_series_count(path: Path) -> int:
+    if not path.exists():
+        return 0
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return 0
+    return sum(1 for series in payload.get("active_series") or [] if isinstance(series, dict))
+
+
 def save_ticker_cache(path: Path, tickers: set[str] | list[str]) -> None:
     atomic_json(path, {"generated_at": utcnow().isoformat(), "collector_version": COLLECTOR_VERSION,
                        "tickers": sorted(set(tickers))})
@@ -177,6 +187,8 @@ async def run_connection(args, series: list[str], writer: HourlyWriter,
         "current_tickers": len(tickers),
         "last_error": None,
     })
+    if args.all_weather_catalog:
+        health["series_count"] = load_all_weather_catalog_series_count(args.all_weather_catalog)
     connect_kwargs = dict(ping_interval=20, ping_timeout=20, max_queue=16384)
     try:
         cm = websockets.connect(args.ws_url, additional_headers=headers, **connect_kwargs)
@@ -220,6 +232,8 @@ async def run_connection(args, series: list[str], writer: HourlyWriter,
                     print(f"ticker_refresh added={len(added)} removed={len(removed)} total={len(fresh)}", flush=True)
                 subscribed = fresh
                 health["current_tickers"] = len(subscribed)
+                if args.all_weather_catalog:
+                    health["series_count"] = load_all_weather_catalog_series_count(args.all_weather_catalog)
                 save_ticker_cache(args.ticker_cache, subscribed)
                 next_refresh = time.monotonic() + args.refresh_seconds
 
