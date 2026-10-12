@@ -6,7 +6,7 @@ After=network-online.target
 Type=simple
 WorkingDirectory=/opt/weather-alpha-strategy-release
 Environment=PYTHONPATH=/opt/weather-alpha-strategy-release
-ExecStart=/opt/weather-alpha-signal-pipeline/.venv/bin/python scripts/run_contrail_q90_monitor.py
+ExecStart=/opt/weather-alpha-runtime/.venv/bin/python scripts/run_contrail_q90_monitor.py
 Restart=always
 RestartSec=15
 

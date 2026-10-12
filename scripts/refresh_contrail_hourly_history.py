@@ -10,7 +10,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from weather_alpha.ops.health import StrategyHealth
+from weather_alpha.ops.health import StrategyHealth, run_health_subprocess
 
 
 def parse_fetch_error_count(output: str) -> int | None:
@@ -36,7 +36,9 @@ def main() -> int:
         "--output", str(args.output), "--concurrency", str(args.concurrency),
         "--merge-existing", "--allow-partial",
     ]
-    proc = subprocess.run(cmd, cwd=root, capture_output=True, text=True, env=os.environ.copy(), timeout=300)
+    proc = run_health_subprocess(cmd, health, "HISTORY_REFRESH", cwd=root, capture_output=True, text=True, env=os.environ.copy(), timeout=300)
+    if proc is None:
+        return 124
     combined_output = "\n".join(x for x in (proc.stdout, proc.stderr) if x)
     fetch_errors = parse_fetch_error_count(combined_output)
     if proc.returncode != 0:

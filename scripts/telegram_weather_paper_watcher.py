@@ -16,11 +16,13 @@ import threading
 import time
 import urllib.parse
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+
+from weather_alpha.ops.health import assess_health, health_alert_transitions
 
 def _fmt(value: Any, digits: int = 3, suffix: str = "") -> str:
     if value in (None, ""):
@@ -305,14 +307,14 @@ def format_ops_status(strategy_status_dir: Path, collector_health: Path, timezon
     if not paths:
         lines.append("Strategies: no health files yet")
     for path in paths:
-        row = _json_file(path)
+        row = assess_health(_json_file(path))
         status = str(row.get("status") or "UNKNOWN")
         lines.append(f"{row.get('component') or path.stem}: {status} — {row.get('reason') or 'n/a'}")
-    collector = _json_file(collector_health)
+    collector = assess_health(_json_file(collector_health), timestamp_keys=("generated_at", "last_message_at"), max_age_seconds=30)
     if collector:
-        err = collector.get("last_error")
+        err = collector.get("reason") if collector.get("status") == "ERROR" else None
         lines.append(
-            f"Kalshi L2: {'ERROR' if err else 'OK'} | tickers {collector.get('current_tickers','n/a')} | gaps {collector.get('sequence_gaps','n/a')} | reconnects {collector.get('reconnects','n/a')}"
+            f"Kalshi L2: {'ERROR — ' + str(err) if err else 'OK'} | tickers {collector.get('current_tickers','n/a')} | gaps {collector.get('sequence_gaps','n/a')} | reconnects {collector.get('reconnects','n/a')}"
         )
         lines.append(f"L2 last message: {_local_timestamp(collector.get('last_message_at'), timezone_name)}")
     lines.append("All strategy processes are PAPER/SHADOW; live order submission is disabled.")
@@ -492,8 +494,7 @@ def main() -> int:
     tails = {kind: JsonlTail(path, start_at_end=not args.replay_existing) for kind, path in sources}
     state = load_state(args.state)
     seen = set(str(x) for x in state.get("seen", []))
-    health_mtime = 0
-    health_signature = state.get("health_signature")
+    freshness_signatures = state.get("freshness_signatures") or {}
     update_offset = state.get("telegram_update_offset")
     repo_root = Path(__file__).resolve().parents[1]
     command_threads: set[int] = set()
@@ -557,26 +558,26 @@ def main() -> int:
         except Exception as exc:
             print(f"telegram command poll failed: {type(exc).__name__}:{exc}", flush=True)
 
-        if args.collector_health.exists():
-            mtime = args.collector_health.stat().st_mtime_ns
-            if mtime != health_mtime:
-                health_mtime = mtime
-                try:
-                    health = json.loads(args.collector_health.read_text(encoding="utf-8"))
-                except Exception:
-                    health = {}
-                signature = str(health.get("error") or health.get("last_error") or "")
-                if signature != health_signature and (signature or health_signature):
-                    try:
-                        send_telegram(token, chat_id, format_health(health, args.timezone))
-                        health_signature = signature
-                        changed = True
-                    except Exception as exc:
-                        print(f"telegram health alert failed: {type(exc).__name__}:{exc}", flush=True)
+        # Evaluate age every poll; a dead process leaves an unchanged file.
+        freshness_events, next_signatures = health_alert_transitions(
+            args.strategy_status_dir, args.collector_health, freshness_signatures)
+        for payload in freshness_events:
+            try:
+                send_telegram(token, chat_id, format_strategy_health(payload, args.timezone))
+                freshness_signatures[payload["component"]] = next_signatures[payload["component"]]
+                changed = True
+            except Exception as exc:
+                print(f"telegram freshness alert failed: {type(exc).__name__}:{exc}", flush=True)
+        previous_freshness_signatures = dict(freshness_signatures)
+        for component, signature in next_signatures.items():
+            if not any(event["component"] == component for event in freshness_events):
+                freshness_signatures[component] = signature
+        if freshness_signatures != previous_freshness_signatures:
+            changed = True
 
         if changed:
             compact_seen = list(seen)[-5000:]
-            state = {"seen": compact_seen, "health_signature": health_signature, "telegram_update_offset": update_offset}
+            state = {"seen": compact_seen, "telegram_update_offset": update_offset, "freshness_signatures": freshness_signatures}
             save_state(args.state, state)
         time.sleep(max(0.2, args.poll_interval))
 

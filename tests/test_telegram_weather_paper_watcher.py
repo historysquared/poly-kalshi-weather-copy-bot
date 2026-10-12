@@ -62,3 +62,13 @@ def test_weather_signal_format_does_not_hide_missing_slope():
     text = format_weather_event("PAPER_SIGNAL", payload, "America/Los_Angeles")
     assert "15m slope MISSING" in text
     assert "fail-closed" in text
+
+def test_ops_status_does_not_display_stale_strategy_as_ok(tmp_path):
+    import json
+    from datetime import datetime,timedelta,timezone
+    from scripts.telegram_weather_paper_watcher import format_ops_status
+    folder=tmp_path/'health';folder.mkdir()
+    (folder/'demo.json').write_text(json.dumps({'component':'demo','status':'OK','reason':'CYCLE_OK','updated_at':(datetime.now(timezone.utc)-timedelta(hours=1)).isoformat()}))
+    text=format_ops_status(folder,tmp_path/'missing','UTC')
+    assert 'demo: ERROR — STALE_HEALTH' in text
+    assert 'Kalshi L2: ERROR — MISSING_HEALTH' in text

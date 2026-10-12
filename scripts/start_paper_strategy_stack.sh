@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="${ROOT:-/opt/weather-alpha-strategy-release}"
-PYTHON="${PYTHON:-/opt/weather-alpha-signal-pipeline/.venv/bin/python}"
+PYTHON="${PYTHON:-/opt/weather-alpha-runtime/.venv/bin/python}"
 LIVE="${LIVE:-/data/weather/live}"
 DRY_RUN=false
 

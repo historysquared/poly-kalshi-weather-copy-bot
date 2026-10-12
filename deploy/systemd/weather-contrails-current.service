@@ -7,4 +7,4 @@ Type=oneshot
 WorkingDirectory=/opt/weather-alpha-strategy-release
 EnvironmentFile=/root/.weather-contrails.env
 Environment=PYTHONPATH=/opt/weather-alpha-strategy-release
-ExecStart=/opt/weather-alpha-signal-pipeline/.venv/bin/python scripts/record_contrail_current.py
+ExecStart=/opt/weather-alpha-runtime/.venv/bin/python scripts/record_contrail_current.py

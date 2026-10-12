@@ -8,7 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from weather_alpha.ops.health import StrategyHealth
+from weather_alpha.ops.health import StrategyHealth, run_health_subprocess
 
 
 def main() -> int:
@@ -31,7 +31,9 @@ def main() -> int:
         "--output", str(args.output),
         "--history-output", str(args.history_output),
     ]
-    proc = subprocess.run(cmd, cwd=root, capture_output=True, text=True, env=os.environ.copy(), timeout=240)
+    proc = run_health_subprocess(cmd, health, "CONTRAIL_SCAN", cwd=root, capture_output=True, text=True, env=os.environ.copy(), timeout=240)
+    if proc is None:
+        return 124
     if proc.returncode != 0:
         detail = (proc.stderr or proc.stdout)[-1200:]
         health.report("ERROR", "CONTRAIL_SCAN_FAILED", detail=detail)

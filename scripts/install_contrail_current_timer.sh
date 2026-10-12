@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="${ROOT:-/opt/weather-alpha-strategy-release}"
 SOURCE_ROOT="${SOURCE_ROOT:-$ROOT}"
 UNIT_DIR="${UNIT_DIR:-/etc/systemd/system}"
-PYTHON="${PYTHON:-/opt/weather-alpha-signal-pipeline/.venv/bin/python}"
+PYTHON="${PYTHON:-/opt/weather-alpha-runtime/.venv/bin/python}"
 DRY_RUN=false
 RETIRE_STAYTON=false
 
@@ -45,6 +45,11 @@ if [[ "$DRY_RUN" != true && ! -x "$PYTHON" ]]; then
   exit 2
 fi
 
+if [[ ! "$PYTHON" =~ ^/[a-zA-Z0-9_./-]+$ ]]; then
+  echo "python runtime must be an absolute systemd-safe path" >&2
+  exit 2
+fi
+
 units=(
   weather-contrails-current.service
   weather-contrails-current.timer
@@ -70,8 +75,19 @@ run() {
   fi
 }
 
+stage=$(mktemp -d)
+trap 'rm -rf "$stage"' EXIT
 for unit in "${units[@]}"; do
-  run install -m 0644 "$SOURCE_ROOT/deploy/systemd/$unit" "$UNIT_DIR/$unit"
+  content=$(<"$SOURCE_ROOT/deploy/systemd/$unit")
+  content="${content//\/opt\/weather-alpha-runtime\/.venv\/bin\/python/$PYTHON}"
+  printf '%s\n' "$content" > "$stage/$unit"
+  if [[ "$DRY_RUN" == true ]]; then
+    echo "RENDERED $unit"
+    while IFS= read -r line; do
+      [[ "$line" != ExecStart=* ]] || printf '%s\n' "$line"
+    done < "$stage/$unit"
+  fi
+  run install -m 0644 "$stage/$unit" "$UNIT_DIR/$unit"
 done
 run systemctl daemon-reload
 run systemctl enable --now weather-contrails-current.timer weather-contrails-history.timer weather-contrails-q90.service

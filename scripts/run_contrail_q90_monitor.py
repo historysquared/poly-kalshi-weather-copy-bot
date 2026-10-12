@@ -69,7 +69,14 @@ def build_panel(root: Path, args: argparse.Namespace) -> tuple[int, str]:
 
 
 def cycle(root: Path, args: argparse.Namespace, state: dict[str, Any], health: StrategyHealth) -> None:
-    code, detail = build_panel(root, args)
+    try:
+        code, detail = build_panel(root, args)
+    except subprocess.TimeoutExpired:
+        health.report("ERROR", "CONTRAIL_PANEL_TIMEOUT", timeout_seconds=180)
+        return
+    except OSError as exc:
+        health.report("ERROR", "CONTRAIL_PANEL_SPAWN_FAILED", exception_type=type(exc).__name__)
+        return
     if code != 0:
         health.report("ERROR", "CONTRAIL_PANEL_BUILD_FAILED", detail=detail)
         print(f"contrail_q90_error={detail}", flush=True)
