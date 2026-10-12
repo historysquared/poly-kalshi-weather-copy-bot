@@ -273,7 +273,9 @@ def update_live_book_state(
                 quote[key] = previous[key]
         bbo_quotes[ticker] = quote
     elif msg_type == "orderbook_delta" and ticker:
-        book = books.setdefault(ticker, KalshiBook(ticker))
+        book = books.get(ticker)
+        if book is None:
+            return ticker
         book.apply_delta(msg, data.get("seq"))
         previous = bbo_quotes.get(ticker) or {}
         quote = book_quote(book, received)
@@ -285,9 +287,7 @@ def update_live_book_state(
         quote = ticker_quote(msg, received)
         if quote is not None:
             existing = bbo_quotes.get(quote["ticker"])
-            if existing is None:
-                bbo_quotes[quote["ticker"]] = quote
-            else:
+            if existing is not None:
                 existing["ticker_exchange_time"] = quote.get("exchange_time")
                 existing["ticker_receive_time"] = quote.get("local_receive_timestamp")
                 for key in ("last_trade_price", "last_trade_size", "volume", "open_interest"):
@@ -295,9 +295,47 @@ def update_live_book_state(
     return ticker
 
 
+def reset_live_books(books: dict, quotes: dict) -> None:
+    """No book is executable until a snapshot in the current connection."""
+    books.clear()
+    quotes.clear()
+
+
+def apply_sequenced_message(data: dict, received: datetime, books: dict,
+                            quotes: dict, last_seq: dict, health: dict) -> bool:
+    """Return True when continuity loss requires reconnect/resnapshot.
+
+    Sequence numbers belong to subscription IDs, not individual markets.
+    Raw archiving is performed by the caller before this validity gate.
+    """
+    sid, seq = data.get("sid"), data.get("seq")
+    is_book = data.get("type") in {"orderbook_snapshot", "orderbook_delta"}
+    if type(sid) is not int or type(seq) is not int:
+        if is_book:
+            reset_live_books(books, quotes)
+            health["last_gap"] = {"reason": "MISSING_BOOK_SEQUENCE", "at": received.isoformat()}
+            return True
+        return False
+    previous = last_seq.get(sid)
+    if previous is not None and seq <= previous:
+        health["duplicates_or_reorders"] += 1
+        return False
+    if previous is not None and seq > previous + 1:
+        health["sequence_gaps"] += seq - previous - 1
+        health["last_gap"] = {"sid": sid, "previous": previous, "current": seq,
+                              "at": received.isoformat()}
+        reset_live_books(books, quotes)
+        return True
+    last_seq[sid] = seq
+    update_live_book_state(data, received, books, quotes)
+    return False
+
+
 async def run_connection(args, series: list[str], writer: HourlyWriter,
                          health: dict[str, Any], books: dict[str, KalshiBook],
                          bbo_quotes: dict[str, dict[str, Any]], generation: int) -> None:
+    reset_live_books(books, bbo_quotes)
+    atomic_json(args.bbo_output, bbo_payload(bbo_quotes, generated_at=utcnow(), health=health))
     tickers = load_all_weather_catalog_tickers(args.all_weather_catalog) if args.all_weather_catalog else []
     if not tickers:
         tickers = load_ticker_cache(args.ticker_cache)
@@ -396,19 +434,9 @@ async def run_connection(args, series: list[str], writer: HourlyWriter,
                 if channel in CHANNELS and isinstance(sid, int):
                     channel_sids[channel] = sid
 
-            ticker = update_live_book_state(data, received, books, bbo_quotes)
+            ticker = str(msg.get("market_ticker") or "") or None
             sid = data.get("sid")
             seq = data.get("seq")
-            if isinstance(sid, int) and isinstance(seq, int):
-                previous = last_seq.get(sid)
-                if previous is not None:
-                    if seq > previous + 1:
-                        health["sequence_gaps"] += seq - previous - 1
-                        health["last_gap"] = {"sid": sid, "previous": previous, "current": seq,
-                                              "at": received.isoformat()}
-                    elif seq <= previous:
-                        health["duplicates_or_reorders"] += 1
-                last_seq[sid] = max(seq, previous or seq)
 
             health["messages"] += 1
             update_type_count(health, msg_type)
@@ -426,6 +454,9 @@ async def run_connection(args, series: list[str], writer: HourlyWriter,
                 "raw": data,
             }
             writer.write(received, row)
+            if apply_sequenced_message(data, received, books, bbo_quotes, last_seq, health):
+                atomic_json(args.bbo_output, bbo_payload(bbo_quotes, generated_at=received, health=health))
+                raise RuntimeError("BOOK_SEQUENCE_INVALID: reconnect for fresh snapshots")
             if msg_type == "error":
                 health["last_error"] = msg or data
             if time.monotonic() - last_health >= args.health_interval:
@@ -457,6 +488,8 @@ async def main_async(args) -> int:
             except KeyboardInterrupt:
                 raise
             except Exception as exc:
+                reset_live_books(books, bbo_quotes)
+                atomic_json(args.bbo_output, bbo_payload(bbo_quotes, generated_at=utcnow(), health=health))
                 health["reconnects"] += 1
                 health["last_error"] = f"{type(exc).__name__}:{exc}"
                 health["generated_at"] = utcnow().isoformat()
