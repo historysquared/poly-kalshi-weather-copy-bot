@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily thirty-day retention for fresh Polymarket US archives
+
+[Timer]
+OnCalendar=*-*-* 01:00:00 UTC
+Persistent=true
+RandomizedDelaySec=120
+Unit=weather-retention-polymarket-us.service
+
+[Install]
+WantedBy=timers.target

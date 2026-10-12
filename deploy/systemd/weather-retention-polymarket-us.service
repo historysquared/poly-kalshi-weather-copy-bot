@@ -1,0 +1,14 @@
+[Unit]
+Description=Expire fresh Polymarket US archives after thirty days
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/weather-alpha-retention-current
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/weather-alpha-runtime/.venv/bin/python /opt/weather-alpha-retention-current/scripts/expire_polymarket_us_30d.py --execute
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/data/weather/rolling30/polymarket_us
+TimeoutStartSec=120
