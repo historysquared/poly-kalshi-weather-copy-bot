@@ -1,0 +1,121 @@
+{
+  "collector_release": "d013a3b1452af5a9cb64c9ee1ede6c3e4c50c44b",
+  "destination": "/data/weather/rolling30/polymarket_us",
+  "retention_implemented": false,
+  "cycles": [
+    {
+      "generated_at": "2026-10-12T03:23:22.810138+00:00",
+      "event_count": 13,
+      "market_count": 71,
+      "pid": 1560822
+    },
+    {
+      "generated_at": "2026-10-12T03:24:23.007720+00:00",
+      "event_count": 13,
+      "market_count": 71,
+      "pid": 1560822
+    },
+    {
+      "generated_at": "2026-10-12T03:25:23.186292+00:00",
+      "event_count": 13,
+      "market_count": 71,
+      "pid": 1560822
+    },
+    {
+      "generated_at": "2026-10-12T03:26:23.358928+00:00",
+      "event_count": 13,
+      "market_count": 71,
+      "pid": 1560822
+    },
+    {
+      "generated_at": "2026-10-12T03:27:23.532837+00:00",
+      "event_count": 13,
+      "market_count": 71,
+      "pid": 1560822
+    }
+  ],
+  "state": "HANDOVER_ACCEPTED_BOOT_ENABLED",
+  "kalshi_before": "MainPID=969321\nExecMainStartTimestamp=Wed 2026-09-30 06:53:09 UTC\n",
+  "kalshi_health_before": {
+    "catalog_path": "/data/weather/status/kalshi_all_weather_live_catalog.json",
+    "collector_version": "kalshi-weather-l2-archive-v1",
+    "connected_at": "2026-10-08T07:19:02.506894+00:00",
+    "connection_id": "bb40c66a-bdb0-4b9a-b4ea-888b7a6b7558",
+    "current_tickers": 1515,
+    "duplicates_or_reorders": 0,
+    "generated_at": "2026-10-12T03:23:20.182821+00:00",
+    "generation": 4,
+    "last_error": null,
+    "last_message_at": "2026-10-12T03:23:20.182821+00:00",
+    "live_order_submission": false,
+    "message_types": {
+      "ok": 282,
+      "orderbook_delta": 314396457,
+      "orderbook_snapshot": 27170,
+      "subscribed": 15,
+      "ticker": 12363149,
+      "trade": 1594063
+    },
+    "messages": 328381136,
+    "read_only": true,
+    "reconnects": 4,
+    "schema_version": 1,
+    "scope": "ALL_WEATHER_CATALOG",
+    "sequence_gaps": 0,
+    "series_count": 48,
+    "subscription_sids": {
+      "orderbook_delta": 1,
+      "ticker": 3,
+      "trade": 2
+    }
+  },
+  "destination_initial_file_count": 0,
+  "cutover_started_at": "2026-10-12T03:23:22.027480+00:00",
+  "accepted_cycles": 5,
+  "latest_cycle": {
+    "generated_at": "2026-10-12T03:27:23.532837+00:00",
+    "event_count": 13,
+    "market_count": 71,
+    "pid": 1560822
+  },
+  "unit_sha256": "a21833c49fbe70daeb4c194baeab76a75d633ddd34832f41b85084005e85b652",
+  "raw_bytes": 2986,
+  "kalshi_after": "MainPID=969321\nExecMainStartTimestamp=Wed 2026-09-30 06:53:09 UTC\n",
+  "kalshi_health_after": {
+    "catalog_path": "/data/weather/status/kalshi_all_weather_live_catalog.json",
+    "collector_version": "kalshi-weather-l2-archive-v1",
+    "connected_at": "2026-10-08T07:19:02.506894+00:00",
+    "connection_id": "bb40c66a-bdb0-4b9a-b4ea-888b7a6b7558",
+    "current_tickers": 1515,
+    "duplicates_or_reorders": 0,
+    "generated_at": "2026-10-12T03:27:23.014654+00:00",
+    "generation": 4,
+    "last_error": null,
+    "last_message_at": "2026-10-12T03:27:23.014654+00:00",
+    "live_order_submission": false,
+    "message_types": {
+      "ok": 282,
+      "orderbook_delta": 314459751,
+      "orderbook_snapshot": 27170,
+      "subscribed": 15,
+      "ticker": 12366185,
+      "trade": 1594316
+    },
+    "messages": 328447719,
+    "read_only": true,
+    "reconnects": 4,
+    "schema_version": 1,
+    "scope": "ALL_WEATHER_CATALOG",
+    "sequence_gaps": 0,
+    "series_count": 48,
+    "subscription_sids": {
+      "orderbook_delta": 1,
+      "ticker": 3,
+      "trade": 2
+    }
+  },
+  "completed_at": "2026-10-12T03:27:24.203360+00:00",
+  "final_raw_rows_checked": 6,
+  "no_pre_cutover_rows": true,
+  "systemd_enabled": "enabled"
+}
