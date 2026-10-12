@@ -6,6 +6,8 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 User=root
-WorkingDirectory=/opt/weather-alpha-collector-release
-Environment=PYTHONPATH=/opt/weather-alpha-collector-release
-ExecStart=/opt/weather-alpha-signal-pipeline/.venv/bin/python /opt/weather-alpha-collector-release/scripts/build_kalshi_all_weather_live_catalog.py
+WorkingDirectory=/opt/weather-alpha-releases/9fdf49a0797719e7ca4fccbae3cb12b3f94398b9
+Environment=PYTHONPATH=/opt/weather-alpha-releases/9fdf49a0797719e7ca4fccbae3cb12b3f94398b9
+ExecStart=/opt/weather-alpha-runtime/.venv/bin/python /opt/weather-alpha-releases/9fdf49a0797719e7ca4fccbae3cb12b3f94398b9/scripts/build_kalshi_all_weather_live_catalog.py --output /data/weather/rolling30/kalshi/catalog.json
+
+TimeoutStartSec=600
