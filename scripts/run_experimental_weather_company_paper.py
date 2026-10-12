@@ -21,6 +21,7 @@ from weather_alpha.providers.surface import IemAsosOneMinuteArchive
 from weather_alpha.settlement.reconstruction import local_standard_settlement_window
 from weather_alpha.settlement.stations import station_clock
 from weather_alpha.research.weather_company import WeatherCompanyResearchBridge
+from weather_alpha.ops.health import StrategyHealth
 
 BASE = "https://external-api.kalshi.com/trade-api/v2"
 SERIES_STATION = {
@@ -229,7 +230,7 @@ def settle_pending(args: argparse.Namespace, state: dict[str, Any], bridge: Weat
     state["pending"] = remain
 
 
-def run_cycle(args: argparse.Namespace, state: dict[str, Any], bridge: WeatherCompanyResearchBridge) -> None:
+def run_cycle(args: argparse.Namespace, state: dict[str, Any], bridge: WeatherCompanyResearchBridge, health: StrategyHealth) -> None:
     now = datetime.now(timezone.utc)
     settle_pending(args, state, bridge)
     contracts = fetch_contracts([x.strip().upper() for x in args.series.split(",") if x.strip()])
@@ -239,6 +240,7 @@ def run_cycle(args: argparse.Namespace, state: dict[str, Any], bridge: WeatherCo
 
     obs_cache: dict[tuple[str, str], list[TimedTemperature]] = {}
     candidates: list[dict[str, Any]] = []
+    data_issues: list[str] = []
 
     for event_id, group in by_event.items():
         c0 = group[0]
@@ -250,6 +252,8 @@ def run_cycle(args: argparse.Namespace, state: dict[str, Any], bridge: WeatherCo
             try:
                 obs_cache[key] = asyncio.run(fetch_obs(c0.station, window.start_utc, now))
             except Exception as exc:
+                issue = f"OBS_ERROR:{c0.station}:{type(exc).__name__}:{exc}"
+                data_issues.append(issue)
                 print(f"obs_error station={c0.station} {type(exc).__name__}:{exc}", flush=True)
                 obs_cache[key] = []
         state_surface = surface_state(obs_cache[key], as_of=now)
@@ -258,9 +262,13 @@ def run_cycle(args: argparse.Namespace, state: dict[str, Any], bridge: WeatherCo
             min_minutes_since_high=args.min_minutes_since_high,
             min_drop_from_high_f=args.min_drop_from_high_f,
             max_positive_slope_f_per_min=args.max_positive_slope,
+            require_slope=True,
         )
         if state_surface.high_so_far_f is None:
+            data_issues.append(f"MISSING_SURFACE_STATE:{c0.station}")
             continue
+        if state_surface.slope_15m_f_per_min is None:
+            data_issues.append(f"MISSING_15M_SLOPE:{c0.station}")
 
         for c in group:
             in_bucket = contains(c.shape, c.lower, c.upper, state_surface.high_so_far_f)
@@ -354,6 +362,17 @@ def run_cycle(args: argparse.Namespace, state: dict[str, Any], bridge: WeatherCo
         f"pending={len(state.get('pending', []))} traded_events={len(state.get('traded_events', {}))}",
         flush=True,
     )
+    if data_issues:
+        health.report(
+            "DEGRADED", "REQUIRED_DATA_INCOMPLETE",
+            issues=sorted(set(data_issues))[:20], contracts=len(contracts), events=len(by_event),
+            pending=len(state.get("pending", [])),
+        )
+    else:
+        health.report(
+            "OK", "CYCLE_OK", contracts=len(contracts), events=len(by_event),
+            pending=len(state.get("pending", [])),
+        )
     save_state(args.state, state)
 
 
@@ -380,14 +399,16 @@ def main() -> int:
     print("WARNING=model is provisional and uncalibrated; this process cannot submit orders", flush=True)
     state = load_state(args.state)
     bridge = WeatherCompanyResearchBridge(args.research_db)
+    health = StrategyHealth("weather_company_terminal_high_v1")
     while True:
         try:
-            run_cycle(args, state, bridge)
+            run_cycle(args, state, bridge, health)
         except KeyboardInterrupt:
             save_state(args.state, state)
             raise
         except Exception as exc:
             print(f"paper_cycle_error={type(exc).__name__}:{exc}", flush=True)
+            health.report("ERROR", f"{type(exc).__name__}:{exc}")
             save_state(args.state, state)
         time.sleep(args.loop_seconds)
 

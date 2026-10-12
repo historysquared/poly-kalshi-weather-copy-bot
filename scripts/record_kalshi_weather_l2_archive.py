@@ -10,6 +10,7 @@ import os
 import time
 from collections import Counter
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -17,7 +18,7 @@ from uuid import uuid4
 import httpx
 import websockets
 
-from weather_alpha.live.kalshi_ws import WS_URL, websocket_auth_headers
+from weather_alpha.live.kalshi_ws import KalshiBook, WS_URL, websocket_auth_headers
 from weather_alpha.markets.kalshi_weather_series import ALL_DAILY_TEMPERATURE_SERIES
 
 BASE = "https://external-api.kalshi.com/trade-api/v2"
@@ -129,9 +130,105 @@ def load_all_weather_catalog_tickers(path: Path) -> list[str]:
     return sorted(tickers)
 
 
+def load_all_weather_catalog_series_count(path: Path) -> int:
+    if not path.exists():
+        return 0
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return 0
+    return sum(1 for series in payload.get("active_series") or [] if isinstance(series, dict))
+
+
 def save_ticker_cache(path: Path, tickers: set[str] | list[str]) -> None:
     atomic_json(path, {"generated_at": utcnow().isoformat(), "collector_version": COLLECTOR_VERSION,
                        "tickers": sorted(set(tickers))})
+
+
+def _complement_price(value: Any) -> str | None:
+    if value in (None, ""):
+        return None
+    try:
+        return format(Decimal("1") - Decimal(str(value)), "f")
+    except (InvalidOperation, ValueError):
+        return None
+
+
+def book_quote(book: KalshiBook, received: datetime) -> dict[str, Any]:
+    summary = book.summary()
+    def first_size(key: str) -> str | None:
+        levels = summary.get(key) or []
+        return str(levels[0][1]) if levels else None
+
+    return {
+        "ticker": book.ticker,
+        "exchange_time": summary.get("exchange_ts"),
+        "local_receive_timestamp": received.isoformat(),
+        "sequence": summary.get("sequence"),
+        "yes_bid": summary.get("yes_best_bid"),
+        "yes_ask": summary.get("yes_best_ask"),
+        "no_bid": summary.get("no_best_bid"),
+        "no_ask": summary.get("no_best_ask"),
+        "yes_bid_size": first_size("yes_bid_levels_top5"),
+        "yes_ask_size": first_size("yes_ask_levels_top5"),
+        "no_bid_size": first_size("no_bid_levels_top5"),
+        "no_ask_size": first_size("no_ask_levels_top5"),
+        "yes_spread": summary.get("yes_spread"),
+        "no_spread": summary.get("no_spread"),
+        "yes_bid_depth_top5": summary.get("yes_bid_depth_top5"),
+        "yes_ask_depth_top5": summary.get("yes_ask_depth_top5"),
+        "no_bid_depth_top5": summary.get("no_bid_depth_top5"),
+        "no_ask_depth_top5": summary.get("no_ask_depth_top5"),
+        # Full level arrays remain in raw L2; this current-state file stays compact.
+    }
+
+
+def ticker_quote(msg: dict[str, Any], received: datetime) -> dict[str, Any] | None:
+    ticker = str(msg.get("market_ticker") or "")
+    if not ticker:
+        return None
+    yes_bid = msg.get("yes_bid_dollars")
+    yes_ask = msg.get("yes_ask_dollars")
+    yes_bid_size = msg.get("yes_bid_size_fp")
+    yes_ask_size = msg.get("yes_ask_size_fp")
+    return {
+        "ticker": ticker,
+        "exchange_time": msg.get("time"),
+        "exchange_ts_ms": msg.get("ts_ms"),
+        "local_receive_timestamp": received.isoformat(),
+        "yes_bid": yes_bid,
+        "yes_ask": yes_ask,
+        "no_bid": _complement_price(yes_ask),
+        "no_ask": _complement_price(yes_bid),
+        "yes_bid_size": yes_bid_size,
+        "yes_ask_size": yes_ask_size,
+        "no_bid_size": yes_ask_size,
+        "no_ask_size": yes_bid_size,
+        "last_trade_price": msg.get("price_dollars"),
+        "last_trade_size": msg.get("last_trade_size_fp"),
+        "volume": msg.get("volume_fp"),
+        "open_interest": msg.get("open_interest_fp"),
+    }
+
+
+def bbo_payload(quotes: dict[str, dict[str, Any]], *, generated_at: datetime,
+                health: dict[str, Any]) -> dict[str, Any]:
+    daily_series = set(ALL_DAILY_TEMPERATURE_SERIES)
+    daily_quotes = {
+        ticker: quote
+        for ticker, quote in quotes.items()
+        if ticker.split("-", 1)[0].upper() in daily_series
+    }
+    return {
+        "schema_version": 1,
+        "collector_version": COLLECTOR_VERSION,
+        "scope": "DAILY_TEMPERATURE_BBO_FROM_ALL_WEATHER_WS",
+        "generated_at": generated_at.isoformat(),
+        "all_weather_tickers": health.get("current_tickers"),
+        "all_weather_series_count": health.get("series_count"),
+        "quote_count": len(daily_quotes),
+        "quotes": daily_quotes,
+    }
 
 
 def health_template(series: list[str]) -> dict[str, Any]:
@@ -157,8 +254,88 @@ def update_type_count(health: dict[str, Any], msg_type: str) -> None:
     health["message_types"] = dict(counts)
 
 
+def update_live_book_state(
+    data: dict[str, Any],
+    received: datetime,
+    books: dict[str, KalshiBook],
+    bbo_quotes: dict[str, dict[str, Any]],
+) -> str | None:
+    msg_type = str(data.get("type") or "")
+    msg = data.get("msg") if isinstance(data.get("msg"), dict) else {}
+    ticker = str(msg.get("market_ticker") or "") or None
+    if msg_type == "orderbook_snapshot" and ticker:
+        book = books.setdefault(ticker, KalshiBook(ticker))
+        book.apply_snapshot(msg, data.get("seq"))
+        previous = bbo_quotes.get(ticker) or {}
+        quote = book_quote(book, received)
+        for key in ("last_trade_price", "last_trade_size", "volume", "open_interest"):
+            if previous.get(key) is not None:
+                quote[key] = previous[key]
+        bbo_quotes[ticker] = quote
+    elif msg_type == "orderbook_delta" and ticker:
+        book = books.get(ticker)
+        if book is None:
+            return ticker
+        book.apply_delta(msg, data.get("seq"))
+        previous = bbo_quotes.get(ticker) or {}
+        quote = book_quote(book, received)
+        for key in ("last_trade_price", "last_trade_size", "volume", "open_interest"):
+            if previous.get(key) is not None:
+                quote[key] = previous[key]
+        bbo_quotes[ticker] = quote
+    elif msg_type == "ticker":
+        quote = ticker_quote(msg, received)
+        if quote is not None:
+            existing = bbo_quotes.get(quote["ticker"])
+            if existing is not None:
+                existing["ticker_exchange_time"] = quote.get("exchange_time")
+                existing["ticker_receive_time"] = quote.get("local_receive_timestamp")
+                for key in ("last_trade_price", "last_trade_size", "volume", "open_interest"):
+                    existing[key] = quote.get(key)
+    return ticker
+
+
+def reset_live_books(books: dict, quotes: dict) -> None:
+    """No book is executable until a snapshot in the current connection."""
+    books.clear()
+    quotes.clear()
+
+
+def apply_sequenced_message(data: dict, received: datetime, books: dict,
+                            quotes: dict, last_seq: dict, health: dict) -> bool:
+    """Return True when continuity loss requires reconnect/resnapshot.
+
+    Sequence numbers belong to subscription IDs, not individual markets.
+    Raw archiving is performed by the caller before this validity gate.
+    """
+    sid, seq = data.get("sid"), data.get("seq")
+    is_book = data.get("type") in {"orderbook_snapshot", "orderbook_delta"}
+    if type(sid) is not int or type(seq) is not int:
+        if is_book:
+            reset_live_books(books, quotes)
+            health["last_gap"] = {"reason": "MISSING_BOOK_SEQUENCE", "at": received.isoformat()}
+            return True
+        return False
+    previous = last_seq.get(sid)
+    if previous is not None and seq <= previous:
+        health["duplicates_or_reorders"] += 1
+        return False
+    if previous is not None and seq > previous + 1:
+        health["sequence_gaps"] += seq - previous - 1
+        health["last_gap"] = {"sid": sid, "previous": previous, "current": seq,
+                              "at": received.isoformat()}
+        reset_live_books(books, quotes)
+        return True
+    last_seq[sid] = seq
+    update_live_book_state(data, received, books, quotes)
+    return False
+
+
 async def run_connection(args, series: list[str], writer: HourlyWriter,
-                         health: dict[str, Any], generation: int) -> None:
+                         health: dict[str, Any], books: dict[str, KalshiBook],
+                         bbo_quotes: dict[str, dict[str, Any]], generation: int) -> None:
+    reset_live_books(books, bbo_quotes)
+    atomic_json(args.bbo_output, bbo_payload(bbo_quotes, generated_at=utcnow(), health=health))
     tickers = load_all_weather_catalog_tickers(args.all_weather_catalog) if args.all_weather_catalog else []
     if not tickers:
         tickers = load_ticker_cache(args.ticker_cache)
@@ -177,6 +354,8 @@ async def run_connection(args, series: list[str], writer: HourlyWriter,
         "current_tickers": len(tickers),
         "last_error": None,
     })
+    if args.all_weather_catalog:
+        health["series_count"] = load_all_weather_catalog_series_count(args.all_weather_catalog)
     connect_kwargs = dict(ping_interval=20, ping_timeout=20, max_queue=16384)
     try:
         cm = websockets.connect(args.ws_url, additional_headers=headers, **connect_kwargs)
@@ -193,6 +372,7 @@ async def run_connection(args, series: list[str], writer: HourlyWriter,
         next_refresh = time.monotonic() if used_cache else time.monotonic() + args.refresh_seconds
         refresh_task: asyncio.Task[list[str]] | None = None
         last_health = 0.0
+        last_bbo_write = 0.0
         print(f"archive_ws connected generation={generation} tickers={len(tickers)}", flush=True)
         while True:
             now_mono = time.monotonic()
@@ -220,16 +400,26 @@ async def run_connection(args, series: list[str], writer: HourlyWriter,
                     print(f"ticker_refresh added={len(added)} removed={len(removed)} total={len(fresh)}", flush=True)
                 subscribed = fresh
                 health["current_tickers"] = len(subscribed)
+                if args.all_weather_catalog:
+                    health["series_count"] = load_all_weather_catalog_series_count(args.all_weather_catalog)
+                for ticker in removed:
+                    bbo_quotes.pop(ticker, None)
+                    books.pop(ticker, None)
                 save_ticker_cache(args.ticker_cache, subscribed)
                 next_refresh = time.monotonic() + args.refresh_seconds
 
             try:
                 raw = await asyncio.wait_for(ws.recv(), timeout=0.5)
             except asyncio.TimeoutError:
+                now = utcnow()
                 if time.monotonic() - last_health >= args.health_interval:
-                    health["generated_at"] = utcnow().isoformat()
+                    health["generated_at"] = now.isoformat()
+                    health["bbo_quote_count"] = len(bbo_quotes)
                     atomic_json(args.health_output, health)
                     last_health = time.monotonic()
+                if time.monotonic() - last_bbo_write >= args.bbo_interval:
+                    atomic_json(args.bbo_output, bbo_payload(bbo_quotes, generated_at=now, health=health))
+                    last_bbo_write = time.monotonic()
                 continue
             received = utcnow()
             try:
@@ -244,20 +434,10 @@ async def run_connection(args, series: list[str], writer: HourlyWriter,
                 if channel in CHANNELS and isinstance(sid, int):
                     channel_sids[channel] = sid
 
+            ticker = str(msg.get("market_ticker") or "") or None
             sid = data.get("sid")
             seq = data.get("seq")
-            if isinstance(sid, int) and isinstance(seq, int):
-                previous = last_seq.get(sid)
-                if previous is not None:
-                    if seq > previous + 1:
-                        health["sequence_gaps"] += seq - previous - 1
-                        health["last_gap"] = {"sid": sid, "previous": previous, "current": seq,
-                                              "at": received.isoformat()}
-                    elif seq <= previous:
-                        health["duplicates_or_reorders"] += 1
-                last_seq[sid] = max(seq, previous or seq)
 
-            ticker = str(msg.get("market_ticker") or "") or None
             health["messages"] += 1
             update_type_count(health, msg_type)
             health["last_message_at"] = received.isoformat()
@@ -274,13 +454,20 @@ async def run_connection(args, series: list[str], writer: HourlyWriter,
                 "raw": data,
             }
             writer.write(received, row)
+            if apply_sequenced_message(data, received, books, bbo_quotes, last_seq, health):
+                atomic_json(args.bbo_output, bbo_payload(bbo_quotes, generated_at=received, health=health))
+                raise RuntimeError("BOOK_SEQUENCE_INVALID: reconnect for fresh snapshots")
             if msg_type == "error":
                 health["last_error"] = msg or data
             if time.monotonic() - last_health >= args.health_interval:
                 health["generated_at"] = received.isoformat()
                 health["subscription_sids"] = channel_sids
+                health["bbo_quote_count"] = len(bbo_quotes)
                 atomic_json(args.health_output, health)
                 last_health = time.monotonic()
+            if time.monotonic() - last_bbo_write >= args.bbo_interval:
+                atomic_json(args.bbo_output, bbo_payload(bbo_quotes, generated_at=received, health=health))
+                last_bbo_write = time.monotonic()
 
 
 async def main_async(args) -> int:
@@ -289,16 +476,20 @@ async def main_async(args) -> int:
     health["scope"] = "ALL_WEATHER_CATALOG" if args.all_weather_catalog else "CONFIGURED_SERIES"
     health["catalog_path"] = str(args.all_weather_catalog) if args.all_weather_catalog else None
     writer = HourlyWriter(args.raw_dir, args.flush_every)
+    books: dict[str, KalshiBook] = {}
+    bbo_quotes: dict[str, dict[str, Any]] = {}
     generation = 0
     backoff = 1.0
     try:
         while True:
             try:
-                await run_connection(args, series, writer, health, generation)
+                await run_connection(args, series, writer, health, books, bbo_quotes, generation)
                 backoff = 1.0
             except KeyboardInterrupt:
                 raise
             except Exception as exc:
+                reset_live_books(books, bbo_quotes)
+                atomic_json(args.bbo_output, bbo_payload(bbo_quotes, generated_at=utcnow(), health=health))
                 health["reconnects"] += 1
                 health["last_error"] = f"{type(exc).__name__}:{exc}"
                 health["generated_at"] = utcnow().isoformat()
@@ -320,6 +511,8 @@ def main() -> int:
     p.add_argument("--raw-dir", type=Path, default=Path("/data/weather/raw/kalshi_l2"))
     p.add_argument("--health-output", type=Path, default=Path("/data/weather/status/kalshi_l2_archive_health.json"))
     p.add_argument("--ticker-cache", type=Path, default=Path("/data/weather/status/kalshi_weather_open_tickers.json"))
+    p.add_argument("--bbo-output", type=Path, default=Path("/data/weather/status/kalshi_all_weather_bbo.json"))
+    p.add_argument("--bbo-interval", type=float, default=5.0)
     p.add_argument("--all-weather-catalog", type=Path, default=None, help="Subscribe every ticker in a prebuilt Kalshi all-weather catalog")
     p.add_argument("--refresh-seconds", type=float, default=300.0)
     p.add_argument("--health-interval", type=float, default=2.0)

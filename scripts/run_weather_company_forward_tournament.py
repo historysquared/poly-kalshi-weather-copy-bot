@@ -11,6 +11,7 @@ from typing import Any
 
 import scripts.run_experimental_weather_company_paper as paper
 from weather_alpha.research.weather_company import WeatherCompanyResearchBridge
+from weather_alpha.ops.health import StrategyHealth
 
 
 @dataclass(frozen=True)
@@ -199,12 +200,13 @@ def settle_pending(args: argparse.Namespace, state: dict[str, Any], bridges: dic
         ts["pending"] = remain
 
 
-def run_cycle(args: argparse.Namespace, state: dict[str, Any], bridges: dict[str, WeatherCompanyResearchBridge]) -> None:
+def run_cycle(args: argparse.Namespace, state: dict[str, Any], bridges: dict[str, WeatherCompanyResearchBridge], health: StrategyHealth) -> None:
     settle_pending(args, state, bridges)
     snap_time, rows = latest_contract_snapshot(args.contract_history)
     now = datetime.now(timezone.utc)
     if not rows or snap_time is None:
         print("tournament_cycle no_dashboard_snapshot", flush=True)
+        health.report("ERROR", "NO_DASHBOARD_SNAPSHOT")
         return
     try:
         snap_dt = datetime.fromisoformat(snap_time.replace("Z", "+00:00"))
@@ -213,6 +215,7 @@ def run_cycle(args: argparse.Namespace, state: dict[str, Any], bridges: dict[str
         age_s = 999999
     if age_s > args.max_snapshot_age_seconds:
         print(f"tournament_cycle stale_dashboard_snapshot age_s={age_s:.1f}", flush=True)
+        health.report("ERROR", "STALE_DASHBOARD_SNAPSHOT", age_seconds=age_s)
         return
 
     by_event: dict[str, list[dict[str, Any]]] = {}
@@ -263,6 +266,18 @@ def run_cycle(args: argparse.Namespace, state: dict[str, Any], bridges: dict[str
                 flush=True,
             )
         decision_counts[track.name] = counts
+    missing_slope = sum(1 for row in rows if D(row.get("slope_15m_f_per_min")) is None)
+    if missing_slope:
+        health.report(
+            "DEGRADED", "MISSING_REQUIRED_SLOPE", snapshot_time=snap_time,
+            rows=len(rows), missing_slope_rows=missing_slope, events=len(by_event),
+            decision_counts=decision_counts,
+        )
+    else:
+        health.report(
+            "OK", "CYCLE_OK", snapshot_time=snap_time, rows=len(rows),
+            events=len(by_event), decision_counts=decision_counts,
+        )
     save_state(args.state, state)
     print(f"tournament_cycle snapshot={snap_time} events={len(by_event)} counts={decision_counts}", flush=True)
 
@@ -284,14 +299,16 @@ def main() -> int:
     print("tracks=A_CONTROL,B_MODERATE,C_EXPLORATORY synchronized_dashboard_snapshot=true", flush=True)
     state = load_state(args.state)
     bridges = {name: WeatherCompanyResearchBridge(args.research_db, strategy_id) for name, strategy_id in TRACK_STRATEGY_IDS.items()}
+    health = StrategyHealth("weather_company_forward_tournament")
     while True:
         try:
-            run_cycle(args, state, bridges)
+            run_cycle(args, state, bridges, health)
         except KeyboardInterrupt:
             save_state(args.state, state)
             raise
         except Exception as exc:
             print(f"tournament_error={type(exc).__name__}:{exc}", flush=True)
+            health.report("ERROR", f"{type(exc).__name__}:{exc}")
             save_state(args.state, state)
         time.sleep(max(10, args.loop_seconds))
 

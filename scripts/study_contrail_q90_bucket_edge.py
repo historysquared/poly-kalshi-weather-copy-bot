@@ -24,7 +24,11 @@ def load_rows(contrail_path: Path, nbm_path: Path, bucket_path: Path) -> pd.Data
         if nr is None or not br.get("validation_ok", True):
             continue
         previous = (pd.Timestamp(day) - pd.Timedelta(days=1)).strftime("%Y-%m-%d")
-        counts = hourly.get((city, previous), {})
+        history_key = (city, previous)
+        if history_key not in hourly:
+            # Missing satellite history is unknown, never a real zero.
+            continue
+        counts = hourly[history_key]
         prior_18_21 = float(sum(counts.get(hour, 0) for hour in range(18, 21)))
         rows.append({
             "city": city,
@@ -43,14 +47,19 @@ def load_rows(contrail_path: Path, nbm_path: Path, bucket_path: Path) -> pd.Data
 def attach_rolling_q90(df: pd.DataFrame, *, lookback_days: int, min_history_days: int) -> pd.DataFrame:
     out = df.copy()
     out["q90"] = np.nan
+    out["rolling_percentile"] = np.nan
     out["is_top90"] = False
     for idx, row in out.iterrows():
         prior = out[(out.city == row.city) & (out.date < row.date) & (out.date >= row.date - pd.Timedelta(days=lookback_days))]
         if len(prior) < min_history_days:
             continue
-        q90 = float(prior.feature_count.quantile(0.90))
+        values = prior.feature_count.to_numpy(float)
+        target = float(row.feature_count)
+        q90 = float(np.quantile(values, 0.90))
+        percentile = 100.0 * ((values < target).sum() + 0.5 * (values == target).sum()) / len(values)
         out.at[idx, "q90"] = q90
-        out.at[idx, "is_top90"] = bool(row.feature_count >= q90)
+        out.at[idx, "rolling_percentile"] = percentile
+        out.at[idx, "is_top90"] = bool(percentile >= 90.0)
     return out
 
 
@@ -115,7 +124,7 @@ def main() -> int:
         adj_top = max(adjusted, key=adjusted.get)
         details.append({
             "date": row.date.strftime("%Y-%m-%d"), "city": row.city,
-            "feature_count": row.feature_count, "city_q90": row.q90,
+            "feature_count": row.feature_count, "city_q90": row.q90, "rolling_percentile": row.rolling_percentile,
             "nbm_high_f": row.nbm_high_f, "actual_high_f": row.actual_high_f,
             "forecast_error_f": row.actual_high_f - row.nbm_high_f,
             "walk_forward_adjustment_f": effect,

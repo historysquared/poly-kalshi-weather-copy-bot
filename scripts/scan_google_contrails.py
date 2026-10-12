@@ -234,6 +234,7 @@ async def amain() -> int:
         help="filter locations by venue tag",
     )
     ap.add_argument("--radius-km", type=float, default=150.0)
+    ap.add_argument("--concurrency", type=int, default=4)
     ap.add_argument("--min-count", type=int, default=5)
     ap.add_argument("--min-total-length-km", type=float, default=150.0)
     ap.add_argument("--min-cfi", type=float, default=2.0)
@@ -246,6 +247,7 @@ async def amain() -> int:
         help="send Telegram for every scanned location",
     )
     ap.add_argument("--output", type=Path)
+    ap.add_argument("--history-output", type=Path, help="append timestamped scan snapshot JSONL")
     args = ap.parse_args()
 
     locations = load_locations(args.config)
@@ -274,41 +276,35 @@ async def amain() -> int:
     )
 
     client = GoogleContrailsClient()
-    results: list[dict[str, Any]] = []
-    for key, loc in selected:
-        try:
-            row = await scan_one(
-                client,
-                key,
-                loc,
-                radius_km=args.radius_km,
-                min_count=args.min_count,
-                min_length_km=args.min_total_length_km,
-                min_cfi=args.min_cfi,
-                fixed_start=fixed_start,
-                fixed_end=fixed_end,
-            )
-        except Exception as exc:
-            row = {
-                "key": key,
-                "name": loc.get("name", key),
-                "error": f"{type(exc).__name__}: {exc}",
-            }
+    semaphore = asyncio.Semaphore(max(1, args.concurrency))
 
-        results.append(row)
+    async def _one(key: str, loc: dict[str, Any]) -> dict[str, Any]:
+        async with semaphore:
+            try:
+                return await scan_one(
+                    client, key, loc, radius_km=args.radius_km, min_count=args.min_count,
+                    min_length_km=args.min_total_length_km, min_cfi=args.min_cfi,
+                    fixed_start=fixed_start, fixed_end=fixed_end,
+                )
+            except Exception as exc:
+                return {"key": key, "name": loc.get("name", key), "error": f"{type(exc).__name__}: {exc}"}
+
+    results = list(await asyncio.gather(*(_one(key, loc) for key, loc in selected)))
+    for row in results:
         print(json.dumps(row, sort_keys=True, default=str), flush=True)
-
-        if "error" not in row and (
-            (args.telegram and row["alert"]) or args.telegram_all
-        ):
+        if "error" not in row and ((args.telegram and row["alert"]) or args.telegram_all):
             send_telegram(row["telegram_text"])
 
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(
-            json.dumps(results, indent=2, sort_keys=True, default=str) + "\n",
-            encoding="utf-8",
-        )
+        tmp = args.output.with_suffix(args.output.suffix + ".tmp")
+        tmp.write_text(json.dumps(results, indent=2, sort_keys=True, default=str) + "\n", encoding="utf-8")
+        tmp.replace(args.output)
+    if args.history_output:
+        args.history_output.parent.mkdir(parents=True, exist_ok=True)
+        snapshot = {"generated_at": datetime.now(timezone.utc).isoformat(), "results": results}
+        with args.history_output.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(snapshot, sort_keys=True, default=str) + "\n")
     return 0
 
 

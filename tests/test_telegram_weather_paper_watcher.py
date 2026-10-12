@@ -26,3 +26,49 @@ def test_weather_signal_format_has_manual_review_fields():
     assert "Temp 77.00F | High 78.00F" in text
     assert "Since high 41.3m" in text
     assert "PAPER ONLY" in text
+
+
+def test_strategy_health_format_makes_fail_closed_visible():
+    from scripts.telegram_weather_paper_watcher import format_strategy_health
+
+    text = format_strategy_health(
+        {
+            "component": "terminal_high_empirical_v2",
+            "status": "DEGRADED",
+            "reason": "MISSING_REQUIRED_SLOPE",
+            "updated_at": "2026-09-28T20:00:00+00:00",
+            "previous_status": "OK",
+        },
+        "America/Los_Angeles",
+    )
+    assert "DEGRADED" in text
+    assert "MISSING_REQUIRED_SLOPE" in text
+    assert "fail closed" in text
+
+
+def test_weather_signal_format_does_not_hide_missing_slope():
+    payload = {
+        "signal_time": "2026-09-28T20:00:00+00:00",
+        "station": "KMDW",
+        "ticker": "KXHIGHCHI-X",
+        "side": "YES",
+        "signal_entry_ask": "0.30",
+        "latest_temp_f": "70.0",
+        "high_so_far_f": "71.0",
+        "minutes_since_high": "70",
+        "drop_from_high_f": "1.0",
+        "slope_15m_f_per_min": None,
+    }
+    text = format_weather_event("PAPER_SIGNAL", payload, "America/Los_Angeles")
+    assert "15m slope MISSING" in text
+    assert "fail-closed" in text
+
+def test_ops_status_does_not_display_stale_strategy_as_ok(tmp_path):
+    import json
+    from datetime import datetime,timedelta,timezone
+    from scripts.telegram_weather_paper_watcher import format_ops_status
+    folder=tmp_path/'health';folder.mkdir()
+    (folder/'demo.json').write_text(json.dumps({'component':'demo','status':'OK','reason':'CYCLE_OK','updated_at':(datetime.now(timezone.utc)-timedelta(hours=1)).isoformat()}))
+    text=format_ops_status(folder,tmp_path/'missing','UTC')
+    assert 'demo: ERROR — STALE_HEALTH' in text
+    assert 'Kalshi L2: ERROR — MISSING_HEALTH' in text
