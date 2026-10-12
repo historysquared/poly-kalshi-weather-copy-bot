@@ -1,0 +1,15 @@
+[Unit]
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+[Service]
+Type=simple
+WorkingDirectory=/opt/weather-alpha-monitor-current
+Environment=PYTHONPATH=/opt/weather-alpha-monitor-current
+ExecStart=/opt/weather-alpha-runtime/.venv/bin/python /opt/weather-alpha-monitor-current/scripts/run_weather_company_dashboard.py --state /data/weather/rolling30/snapshots/empty-paper-state.json --l2-latest /data/weather/rolling30/snapshots/l2-unavailable.json --json-output /data/weather/rolling30/snapshots/current.json --csv-output /data/weather/rolling30/snapshots/events.csv --contract-csv-output /data/weather/rolling30/snapshots/contracts.csv --text-output /data/weather/rolling30/snapshots/current.txt --snapshot-history /data/weather/rolling30/snapshots/current-snapshot.jsonl --contract-snapshot-history /data/weather/rolling30/snapshots/current-contracts.jsonl --current-only --health-status-dir /data/weather/rolling30/monitors/status --health-events /data/weather/rolling30/monitors/health-events.jsonl
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+KillSignal=SIGINT
+[Install]
+WantedBy=multi-user.target

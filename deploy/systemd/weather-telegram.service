@@ -1,0 +1,16 @@
+[Unit]
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+[Service]
+Type=simple
+WorkingDirectory=/opt/weather-alpha-monitor-current
+Environment=PYTHONPATH=/opt/weather-alpha-monitor-current
+EnvironmentFile=/root/.config/weather-alpha/live.env
+ExecStart=/opt/weather-alpha-runtime/.venv/bin/python /opt/weather-alpha-monitor-current/scripts/telegram_weather_paper_watcher.py --state /data/weather/rolling30/monitors/telegram-state.json --alpha-signals /data/weather/rolling30/monitors/alpha-signals.jsonl --collector-health /data/weather/rolling30/kalshi/health.json --strategy-health-events /data/weather/rolling30/monitors/health-events.jsonl --strategy-status-dir /data/weather/rolling30/monitors/status --contrail-history /data/weather/rolling30/monitors/contrails/hourly-history.json --paper-signals /data/weather/rolling30/monitors/inactive/paper-signals.jsonl --paper-fills /data/weather/rolling30/monitors/inactive/paper-fills.jsonl --tournament-signals /data/weather/rolling30/monitors/inactive/tournament-signals.jsonl --tournament-fills /data/weather/rolling30/monitors/inactive/tournament-fills.jsonl --diagnostic-signals /data/weather/rolling30/monitors/inactive/diagnostic-signals.jsonl --diagnostic-fills /data/weather/rolling30/monitors/inactive/diagnostic-fills.jsonl --remaining-heating-signals /data/weather/rolling30/monitors/inactive/remaining-heating-signals.jsonl --contrail-q90-triggers /data/weather/rolling30/monitors/inactive/contrail-q90-triggers.jsonl
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+KillSignal=SIGINT
+[Install]
+WantedBy=multi-user.target

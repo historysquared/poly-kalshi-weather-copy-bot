@@ -282,7 +282,10 @@ def build_snapshot(args) -> dict:
 
 def write_outputs(args, snap: dict) -> None:
     atomic_json(args.json_output, snap)
-    append_jsonl(args.snapshot_history, snap)
+    if getattr(args, "current_only", False):
+        atomic_text(args.snapshot_history, json.dumps(snap, sort_keys=True, default=str) + "\n")
+    else:
+        append_jsonl(args.snapshot_history, snap)
 
     fields = [
         "snapshot_time", "event_id", "series", "station", "settlement_date", "source_family",
@@ -318,8 +321,11 @@ def write_outputs(args, snap: dict) -> None:
         w.writerows(snap["contract_rows"])
     ctmp.replace(args.contract_csv_output)
 
-    for item in snap["contract_rows"]:
-        append_jsonl(args.contract_snapshot_history, item)
+    if getattr(args, "current_only", False):
+        atomic_text(args.contract_snapshot_history, "".join(json.dumps(item, sort_keys=True, default=str) + "\n" for item in snap["contract_rows"]))
+    else:
+        for item in snap["contract_rows"]:
+            append_jsonl(args.contract_snapshot_history, item)
 
     lines = []
     c = snap["counts"]
@@ -352,16 +358,19 @@ def main() -> int:
     p.add_argument("--text-output", type=Path, default=Path("/data/weather/live/weather_company_dashboard.txt"))
     p.add_argument("--snapshot-history", type=Path, default=Path("/data/weather/live/weather_company_dashboard_history.jsonl"))
     p.add_argument("--contract-snapshot-history", type=Path, default=Path("/data/weather/live/weather_company_contract_history.jsonl"))
+    p.add_argument("--current-only", action="store_true", help="Atomically replace snapshot streams instead of appending history")
     p.add_argument("--loop-seconds", type=int, default=60)
     p.add_argument("--price-floor", type=Decimal, default=Decimal("0.15"))
     p.add_argument("--minimum-edge", type=Decimal, default=Decimal("0.08"))
     p.add_argument("--min-minutes-since-high", type=Decimal, default=Decimal("60"))
     p.add_argument("--min-drop-from-high-f", type=Decimal, default=Decimal("1.0"))
     p.add_argument("--max-positive-slope", type=Decimal, default=Decimal("0.02"))
+    p.add_argument("--health-status-dir", type=Path, default=Path("/data/weather/status/strategies"))
+    p.add_argument("--health-events", type=Path, default=Path("/data/weather/live/strategy_health_events.jsonl"))
     args = p.parse_args()
     if args.loop_seconds < 10:
         raise SystemExit("--loop-seconds must be >=10")
-    health = StrategyHealth("weather_company_dashboard")
+    health = StrategyHealth("weather_company_dashboard", status_dir=args.health_status_dir, events_path=args.health_events)
     print("mode=WEATHER_COMPANY_PAPER_DASHBOARD live_order_submission=false snapshot_history=true", flush=True)
     while True:
         try:

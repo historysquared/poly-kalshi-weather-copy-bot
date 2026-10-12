@@ -493,9 +493,11 @@ def main() -> int:
     p.add_argument("--min-lock-price-gap", type=float, default=0.03)
     p.add_argument("--minimum-event-coverage", type=int, default=40)
     p.add_argument("--once", action="store_true")
+    p.add_argument("--health-status-dir", type=Path, default=Path("/data/weather/status/strategies"))
+    p.add_argument("--health-events", type=Path, default=Path("/data/weather/live/strategy_health_events.jsonl"))
     args = p.parse_args()
     state = load_state(args.state)
-    health = StrategyHealth("live_structural_alpha_shadow")
+    health = StrategyHealth("live_structural_alpha_shadow", status_dir=args.health_status_dir, events_path=args.health_events)
     print("mode=LIVE_ALPHA_SHADOW live_order_submission=false strategies=LADDER_UNDERROUND,MONOTONIC_HIGH_LOCK", flush=True)
     while True:
         try:
