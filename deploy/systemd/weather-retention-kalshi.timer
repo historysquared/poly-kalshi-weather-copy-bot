@@ -1,0 +1,8 @@
+[Unit]
+Description=Daily Kalshi fresh raw 30-day retention
+[Timer]
+OnCalendar=*-*-* 01:10:00 UTC
+RandomizedDelaySec=120
+Persistent=true
+[Install]
+WantedBy=timers.target

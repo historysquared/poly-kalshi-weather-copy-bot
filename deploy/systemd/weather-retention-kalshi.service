@@ -1,0 +1,6 @@
+[Unit]
+Description=Expire completed Kalshi raw UTC days older than 30 days
+[Service]
+Type=oneshot
+ExecStart=/opt/weather-alpha-runtime/.venv/bin/python /opt/weather-alpha-kalshi-retention-current/expire_kalshi_30d.py --execute
+TimeoutStartSec=300
