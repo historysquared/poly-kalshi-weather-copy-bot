@@ -1,0 +1,28 @@
+{
+  "tested_commit": "ab73d4b43b2d8f7ce1677599246d1e1b42906d18",
+  "tested_tree": "ec7ae08130e99d402344d1392b61c90d0763ad82",
+  "production_pid_before_after": 969321,
+  "production_start_before_after": "2026-09-30 06:53:09 UTC",
+  "files": {
+    "docs/validation/collector-20261012/connection-close/live_test.py": "2b41146c9dc03063bdd1e66d4dc0869fbeea6ead66d5070af2bbed03d812360f",
+    "docs/validation/collector-20261012/connection-close/verify_replay.py": "0bb1c9c6387127bbacc6b7738336b4c910fd2fd092f8ecac42020883e28527df",
+    "docs/validation/collector-20261012/connection-close/verification.json": "770efbe00a2929a2cf5f38b1d0b4e24bb0c0ee12c1215fd8fba46fef361f1735",
+    "docs/validation/collector-20261012/connection-close/run.log": "2bc4d49fc69920edcb160615b873bb70cf9b12c7d9ee1d26e93e74b320b74a3f",
+    "docs/validation/collector-20261012/sequence-faults/live_test.py": "fb5f5ad316c7164f119e640e372a4fceedb67a8beee0e8bef7f05cf4ff74745f",
+    "docs/validation/collector-20261012/sequence-faults/verify_replay.py": "e5fb943e0668a2e45317561dcafb6bcb21d181c25553c8c28d79aaf105be3aca",
+    "docs/validation/collector-20261012/sequence-faults/verification.json": "c8d087e392493731b2bd5bd677d11ac5cd5d21f87e552e9d55c9e41b1844ff53",
+    "docs/validation/collector-20261012/sequence-faults/run.log": "50e81c763baf4eea3d917a0a33978edbb94c6b323e52f64ada750328458d455a"
+  },
+  "limitations": [
+    "95s and 70s acceptance tests, not a soak test",
+    "orderly test socket close, not all transport-failure modes",
+    "one synthetic duplicate and one synthetic skipped message",
+    "no strategy deployment or live order execution",
+    "no long-term catalog refresh, storage rollover or reboot test",
+    "CPU measurements include monitoring and BBO history instrumentation"
+  ],
+  "local_raw_evidence": [
+    "/data/weather/isolated-tests/ab73d4b-20261012/raw",
+    "/data/weather/isolated-tests/ab73d4b-gap-20261012/raw"
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "sha": "ab73d4b43b2d8f7ce1677599246d1e1b42906d18",
+  "duration_s": 70.03315168200061,
+  "aborted": null,
+  "connections": 2,
+  "messages": 28513,
+  "message_types": {
+    "subscribed": 6,
+    "orderbook_snapshot": 3030,
+    "orderbook_delta": 24464,
+    "trade": 123,
+    "ticker": 890
+  },
+  "snapshots_by_generation": {
+    "0": 1515,
+    "1": 1515
+  },
+  "sequence_gaps": 1,
+  "duplicates": 1,
+  "delta_before_snapshot": 0,
+  "bbo_history_writes": 39,
+  "bbo_quote_observations": 19008,
+  "unique_quote_states_matched": 4149,
+  "unmatched_quote_states": 0,
+  "comparison_errors": [],
+  "comparison_error_count": 0,
+  "recovery_first_snapshot_seconds": 1.2010000000000005,
+  "avg_cpu_one_core_percent": 7.532551189404509,
+  "max_sample_cpu_percent": 28.791025609956183,
+  "peak_rss_mib": 76.14453125,
+  "max_monitor_interval_s": 1.003912836778909,
+  "final_quote_count": 576,
+  "series_count": 148,
+  "test_reconnects": 1,
+  "test_last_error": null,
+  "raw_compressed_mib": 1.1714363098144531,
+  "production_message_increment": 26140,
+  "production_connection_id_unchanged": true,
+  "production_gap_increment": 0,
+  "production_reconnect_increment": 0,
+  "production_last_error": null
+}

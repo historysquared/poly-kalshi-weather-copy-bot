@@ -1,0 +1,17 @@
+{"elapsed_s": 0.006, "kind": "EMPTY_BBO"}
+{"elapsed_s": 0.138, "kind": "TEST_CONNECTION_OPEN", "number": 1}
+archive_ws connected generation=0 tickers=1515
+{"elapsed_s": 0.16, "kind": "EMPTY_BBO"}
+{"elapsed_s": 0.184, "kind": "FIRST_SNAPSHOT", "generation": 0}
+{"elapsed_s": 20.0, "kind": "INJECTED_DUPLICATE_DELTA"}
+{"elapsed_s": 30.001, "kind": "INJECTED_ORDERBOOK_SEQUENCE_GAP", "skipped_seq": 13524}
+{"elapsed_s": 30.006, "kind": "EMPTY_BBO"}
+{"elapsed_s": 30.024, "kind": "EMPTY_BBO"}
+archive_ws_error RuntimeError:BOOK_SEQUENCE_INVALID: reconnect for fresh snapshots retry_s=1.0
+{"elapsed_s": 31.027, "kind": "EMPTY_BBO"}
+{"elapsed_s": 31.155, "kind": "TEST_CONNECTION_OPEN", "number": 2}
+archive_ws connected generation=1 tickers=1515
+{"elapsed_s": 31.177, "kind": "EMPTY_BBO"}
+{"elapsed_s": 31.202, "kind": "FIRST_SNAPSHOT", "generation": 1}
+{"elapsed_s": 70.026, "kind": "BOUNDED_TEST_COMPLETE"}
+RESULT_FILE=/data/weather/isolated-tests/ab73d4b-gap-20261012/result.json

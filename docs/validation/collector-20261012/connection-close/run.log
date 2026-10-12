@@ -1,0 +1,15 @@
+{"elapsed_s": 0.006, "kind": "EMPTY_BBO"}
+{"elapsed_s": 0.138, "kind": "TEST_CONNECTION_OPEN", "number": 1}
+archive_ws connected generation=0 tickers=1515
+{"elapsed_s": 0.159, "kind": "EMPTY_BBO"}
+{"elapsed_s": 0.175, "kind": "FIRST_SNAPSHOT", "generation": 0}
+{"elapsed_s": 30.002, "kind": "FORCED_TEST_SOCKET_CLOSE"}
+{"elapsed_s": 30.02, "kind": "EMPTY_BBO"}
+archive_ws_error ConnectionClosedOK:sent 1000 (OK) isolated reconnect verification; then received 1000 (OK) retry_s=1.0
+{"elapsed_s": 31.024, "kind": "EMPTY_BBO"}
+{"elapsed_s": 31.141, "kind": "TEST_CONNECTION_OPEN", "number": 2}
+archive_ws connected generation=1 tickers=1515
+{"elapsed_s": 31.16, "kind": "EMPTY_BBO"}
+{"elapsed_s": 31.176, "kind": "FIRST_SNAPSHOT", "generation": 1}
+{"elapsed_s": 95.02, "kind": "BOUNDED_TEST_COMPLETE"}
+RESULT_FILE=/data/weather/isolated-tests/ab73d4b-20261012/result.json
