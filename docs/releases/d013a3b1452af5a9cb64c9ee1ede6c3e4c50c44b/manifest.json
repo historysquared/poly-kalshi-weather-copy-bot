@@ -1,0 +1,1207 @@
+{
+  "merged_commit": "d013a3b1452af5a9cb64c9ee1ede6c3e4c50c44b",
+  "source_tree": "3526576fea510dbeb028c928b6e39bc995c7ec34",
+  "release_path": "/opt/weather-alpha-releases/d013a3b1452af5a9cb64c9ee1ede6c3e4c50c44b",
+  "runtime_path": "/opt/weather-alpha-runtime/.venv",
+  "state": "PREPARED_NOT_ACTIVATED",
+  "created_at": "2026-10-12T02:22:42.024014+00:00",
+  "tracked_files_verified": 237,
+  "write_protected": true,
+  "files": {
+    ".github/workflows/stayton-contrails-now.yml": {
+      "git_blob": "1b63d885ad72103d8aa080ad7cfa4b20b9187572",
+      "sha256": "c2c76ea8e52740eb91918db397487d0a3eca75979a882b1f923d3e73095d848d",
+      "mode": "100644"
+    },
+    ".github/workflows/weather-alpha-ci.yml": {
+      "git_blob": "0788b973ec5b8a6e31843ad6496d849e1ba18570",
+      "sha256": "040ccfee3eb670c2072e4c75ff6db2a35864a52b0813e54a88ef70a01b515f75",
+      "mode": "100644"
+    },
+    ".github/workflows/weather-baseline-screen.yml": {
+      "git_blob": "7e3c5aba2def6bf349660beb893af7bf134c917e",
+      "sha256": "7dea425da2579e5807244029983c24aaf6dc37cc43f9eb7769bbfc9a05e65013",
+      "mode": "100644"
+    },
+    ".github/workflows/weather-historical-smoke.yml": {
+      "git_blob": "f5ff2832bf37ff1f760b963c9ef85628799b3dd2",
+      "sha256": "7ce9272e57b66a9c7e87d934188298c0a0937ac41c116f187fd115bc04a92523",
+      "mode": "100644"
+    },
+    ".gitignore": {
+      "git_blob": "d9de698808287b944fd0190449400b007219d34a",
+      "sha256": "1949336e54fda8341444318a3a4f4851f3869195fc84bfb8ad065f724bd0c087",
+      "mode": "100644"
+    },
+    "README.md": {
+      "git_blob": "340a80397722cfe8d1d8fcdefe2417134f84343d",
+      "sha256": "e0e0c3541c49413b677d47ad16baca7ded3e0ab4fb18796477a6656d4db40fb2",
+      "mode": "100644"
+    },
+    "config/contrail_locations.yaml": {
+      "git_blob": "f7318e62eb9f4d355cf7587457b0877eef0b2016",
+      "sha256": "054fa6c1d11ce8864f37771db2356103fa69b96349d039307b860f2a40efb5e4",
+      "mode": "100644"
+    },
+    "config/stations.yaml": {
+      "git_blob": "04c985beebc75a69f7c0f1b11e8bd2c9e7f11c51",
+      "sha256": "f3d2f45338c03abdc81f05e4c1e01a6ec19b90775a0a9ebf0478de26ac08c3a5",
+      "mode": "100644"
+    },
+    "deploy/systemd/weather-collector-kalshi-l2.service": {
+      "git_blob": "5d7a5b004705ae57eab70209fad49a79b67d10c8",
+      "sha256": "a87fef684433e6d2a9b1dd8d24ec87a42405d288b183d704e7d77b45efb433dd",
+      "mode": "100644"
+    },
+    "deploy/systemd/weather-contrails-current.service": {
+      "git_blob": "a4d57d9bcf2ccba6452cf4fb256289a79b384671",
+      "sha256": "6a83118d3c924d8ec05d75fed0440a6b4d02500ebbd403c48e5a078a0a8c896f",
+      "mode": "100644"
+    },
+    "deploy/systemd/weather-contrails-current.timer": {
+      "git_blob": "dbc2f9cc893f4bfe92dc869df40fdb64609d2d1d",
+      "sha256": "8aba0c04a8eb4be29c1cbf12a28b05f38624c2faccd37879d710470f6da3675a",
+      "mode": "100644"
+    },
+    "deploy/systemd/weather-contrails-history.service": {
+      "git_blob": "3e02cc09c77d4f704fdfd5de04e6029f7f36b88f",
+      "sha256": "9cf66b7a16e885651b11338a880a6807098af47b0fbe9d6ca13d66b9dc05e40c",
+      "mode": "100644"
+    },
+    "deploy/systemd/weather-contrails-history.timer": {
+      "git_blob": "ba23d18a81bdfa9ea3c8bc24e082f51704c17130",
+      "sha256": "16e8fc5a45623616a94d581b4eea04a0426656b585c549a393b5671d3c217926",
+      "mode": "100644"
+    },
+    "deploy/systemd/weather-contrails-q90.service": {
+      "git_blob": "4758a02cda3b6d13fbd9d1c769eacd2c1eb8dd38",
+      "sha256": "3837c1276775b169c9432b0aa2a4a152773baf398f7752d9d4021f759e41e87c",
+      "mode": "100644"
+    },
+    "deploy/systemd/weather-contrails-stayton.service": {
+      "git_blob": "8955159f19e3a57586a40bb2c91e4029a98601c3",
+      "sha256": "1cac58768914297e1f669df081c65095034c1a73788d9ccd58637a166935f0a9",
+      "mode": "100644"
+    },
+    "deploy/systemd/weather-contrails-stayton.timer": {
+      "git_blob": "b9918f91af7053e78aa9eb0bed419b1eafba6f93",
+      "sha256": "e00d1c4877ab3e6ea9a5994e4c96ad77767db839620a39ceecfe907c34662d8a",
+      "mode": "100644"
+    },
+    "deploy/weather-kalshi-all-weather-catalog.service": {
+      "git_blob": "61e58f878e5cc48361ca286708c09f3e2e60cba7",
+      "sha256": "77aaabf8eb3e4277c54bdf38d53fb705c174fc8039bc7358c4ebc94c258d14b8",
+      "mode": "100644"
+    },
+    "deploy/weather-kalshi-all-weather-catalog.timer": {
+      "git_blob": "52c859692e68fbbfa55c0d71db5040fe820756b1",
+      "sha256": "23f6a98a5c3e537b389f4b3d7eb703d1b619e5ec66fb04e327ea0f284ad72223",
+      "mode": "100644"
+    },
+    "docs/CONTRAIL_AUDIT_2026-09-28.md": {
+      "git_blob": "125961bf18998c17adafc3fa7198307e390fbdb1",
+      "sha256": "97d22d2ecb61c5c80b7b8dbf4e9e336f8779390a2118d4889f3c0e2cb7368a65",
+      "mode": "100644"
+    },
+    "docs/FAST_DATA_LDM_PLAN.md": {
+      "git_blob": "d1f562d7a0b80283e53d4379e99faee638f6d9f9",
+      "sha256": "5f6ff26589289bb0dc3032e188acf28f6e5c7b4543f2183dfe0c777715337010",
+      "mode": "100644"
+    },
+    "docs/GOOGLE_CONTRAILS_API_AUDIT_2026-09-21.md": {
+      "git_blob": "c50626354f40f674d2824665b12c297ead8b6a24",
+      "sha256": "6cfd9ae6325a5e7f079d7bf009dad27abb1185b3a45ce6d1e59b050f978912de",
+      "mode": "100644"
+    },
+    "docs/GOOGLE_CONTRAILS_SIGNAL.md": {
+      "git_blob": "75dddfac599807fe48b3abb3f3acfe65c970debb",
+      "sha256": "3539c995a9415cee737895ea41d9d25100c91928f5f6b6a866e1db3dd527aaf0",
+      "mode": "100644"
+    },
+    "docs/LADDER_VALIDATION.md": {
+      "git_blob": "c01ac95dee19d5b8b19c6c6bed308e5d903edca7",
+      "sha256": "242bd6fe57000a1f4bbc52b0205bbc5d60f4968a4516ec1555758bce15bb6a75",
+      "mode": "100644"
+    },
+    "docs/LIVE_WEATHER_RESEARCH_ROADMAP.md": {
+      "git_blob": "98cd536913bb9cd79b0b06bfcc76950c20d7b7c6",
+      "sha256": "4ca4172fc892c9a83d68b8e4630bb4c9ff32d3173b99d3dbf6df484e4fb4d824",
+      "mode": "100644"
+    },
+    "docs/MARKET_UNIVERSE_AND_STORAGE_PLAN.md": {
+      "git_blob": "374e5f3d29b3db79118fb1bc6ce37c84efa6592c",
+      "sha256": "66f5477f12e7964b30f2878e43b0d1d2252bb85c00cf9d4007a13098062022f8",
+      "mode": "100644"
+    },
+    "docs/OPS_RUNTIME_HEALTH.md": {
+      "git_blob": "8a8991653b25de7392f1639f61ca9ed0eba6e1c2",
+      "sha256": "37123e206910a579b93fbae130a901858237e43c8b2a031e89d9dccc756fd007",
+      "mode": "100644"
+    },
+    "docs/PROJECT_AUDIT_2026-09-26.md": {
+      "git_blob": "ab01039b65c8aab2139bef3480c4707b0085171f",
+      "sha256": "84494879dcf58e5035ac2504b100c288bb6b909f6aa00efa395b1f6df4ae2103",
+      "mode": "100644"
+    },
+    "docs/PROJECT_HANDOFF.md": {
+      "git_blob": "9bd965cb61e6976ab13dbd41708ec14bf6dd0341",
+      "sha256": "3971dd4db64632fbea995050de1cda9468b69b776822c2993d28639f42158756",
+      "mode": "100644"
+    },
+    "docs/PROJECT_ROADMAP.md": {
+      "git_blob": "351c42015c9335d729a491f340cd0a9f674d61b6",
+      "sha256": "a04e5a1c393144938d6fcbed32586e426aba11868585184355e2d1a023ba7c50",
+      "mode": "100644"
+    },
+    "docs/PROJECT_STATE.md": {
+      "git_blob": "b7d6cee800b7881e5bf3a674a59ba556ef42a5ad",
+      "sha256": "8a0421ff2558f44be2e57ffe390856c68e79bc26f64c6ed6196faf5ca78b9047",
+      "mode": "100644"
+    },
+    "docs/SIGNAL_RESEARCH_PIPELINE.md": {
+      "git_blob": "51a00004607dff505d0f486f3244a25e853badcb",
+      "sha256": "a27b9bd089f36bc8dadf6f9da942b9e6bae96b04e1448b7e6deffa90e3e0c22b",
+      "mode": "100644"
+    },
+    "docs/WEATHER_100_EDGE_CATALOG.md": {
+      "git_blob": "d20699287306f942b31569f7679cad9e6e462903",
+      "sha256": "2ff80ac3885ff89a771b812a541f3da7d845a78d949f0c933a719cc94fe4c358",
+      "mode": "100644"
+    },
+    "docs/WEATHER_ALPHA_MASTER_STRATEGY_REGISTRY.md": {
+      "git_blob": "506f355b64f89d520e8bc50a9d90558d770635e1",
+      "sha256": "a18535f1141f85481a60cf87ad2bb58f9d978268eb317e4c3eb3028156aa04b3",
+      "mode": "100644"
+    },
+    "docs/WEATHER_ALPHA_MONEY_FIRST_PRIORITY.md": {
+      "git_blob": "3593920e7066067ad5aaba9d7e5f4a7450f59c22",
+      "sha256": "027da5dff2d53f1edc1c0e4e51d1b0e257a873db3d670f094d4d8088be607803",
+      "mode": "100644"
+    },
+    "docs/WEATHER_ALPHA_PRODUCTION_ROADMAP.md": {
+      "git_blob": "78dab42aa0e2323bce73d8ab0ca2d81f2e2ffc56",
+      "sha256": "fd61030a34ff04ad39534590d4f9a9f486fff356f7e1e55250a2a6dd66c2494b",
+      "mode": "100644"
+    },
+    "docs/WEATHER_BACKTEST_GAP_ASSESSMENT.md": {
+      "git_blob": "afddb8fd7cd896e2ed850dcc3d7864115a80193a",
+      "sha256": "7ae8dfc9b52a8c1cfcb44bca08a109da4efbe2ecf8d49b73cedd74bae1b7080f",
+      "mode": "100644"
+    },
+    "docs/WEATHER_PRODUCTION_ENGINE.md": {
+      "git_blob": "4b0af07f9f0f193645a77d0ddf6ba4e4454bbdfd",
+      "sha256": "f158aa6612b10959c6df0a44219b6aa43487d0f1f7aa0bd518297b3f4203153d",
+      "mode": "100644"
+    },
+    "docs/WEATHER_ROADMAP_RESEARCH_HARDENING.md": {
+      "git_blob": "9e50a69eb412167c934cc390796e4016681b3d1f",
+      "sha256": "9a4a3e332ad50d70c76f101af5235322995fee242c8bcb34693cff1b56034f77",
+      "mode": "100644"
+    },
+    "poly-kalshi-weather-copy-bot.zip": {
+      "git_blob": "78ee6892690db75bb4e1cb8b6b95b0116983f6a2",
+      "sha256": "30ade780b5b3675a237f2e5dc389743b6e09cfa9e3aac6b86ed64353453580ce",
+      "mode": "100644"
+    },
+    "pyproject.toml": {
+      "git_blob": "711a23087f4471ec3efaddcdb2e7ba125c24cd73",
+      "sha256": "e34f6bd7d88a8a082a2377799c0d65d54cb8aae2ea64d772019c8e97dba342e8",
+      "mode": "100644"
+    },
+    "research/CLOUD_ALPHA_ARCHITECTURE.md": {
+      "git_blob": "4d4ba7c4823d003d4c4bda40c65cd7710eb0feb5",
+      "sha256": "4a3b904d38c806edd0b1506c9255266d6fb668373357753466a88308c1c4d5bd",
+      "mode": "100644"
+    },
+    "research/EXECUTION_PLAN_APR_AUG.md": {
+      "git_blob": "158d45713794dedf15104a1a6942b2d403846e1f",
+      "sha256": "a05b7107368212d12c6c530fecb19362cb844dac72f28ce57c2a49504aafb6ad",
+      "mode": "100644"
+    },
+    "research/REFERENCE_REPOS.md": {
+      "git_blob": "4198c8ba20c1cb0d997069555cc39ca802d12bcc",
+      "sha256": "16cca86c3e92e36db367ef1f162010febfdb04502f25766394e1854cc75c35cd",
+      "mode": "100644"
+    },
+    "research/WEATHER_BACKTEST_PLAN.md": {
+      "git_blob": "69b9b158408f06fb65e2fcd1fa80a25dcde9d068",
+      "sha256": "b222d051228fb4c0bdc43813216dc0ddba145360553f8605c2d17a4ae497a540",
+      "mode": "100644"
+    },
+    "research/backtest_trigger_20260907.txt": {
+      "git_blob": "985fd52f21dd82be225d1afe0ba4731895e738cb",
+      "sha256": "49e6ad132da43027b76d472aeff48ae97f9ba55ba1148008392e737fca556d5a",
+      "mode": "100644"
+    },
+    "research/backtest_trigger_20260907_2.txt": {
+      "git_blob": "a06eaa5d06d07a3ffd364f735871cee90fceab02",
+      "sha256": "2de68637e31f30376092457c36356ff7559950207110969e8cddd3bfe59acfbf",
+      "mode": "100644"
+    },
+    "scripts/aggregate_pmxt_blind_no_panel.py": {
+      "git_blob": "9f53c0610b847629821918b314a6a4cfc8cbed77",
+      "sha256": "6b6cbf7d0ff5e1d6a1d6cafe3d099f426c5fa96e778518055ed8cf90915e0312",
+      "mode": "100644"
+    },
+    "scripts/audit_asos_settlement_reconstruction.py": {
+      "git_blob": "31f37bc5debd8c7d9701bc98b2b894e37b5ddb9b",
+      "sha256": "98714927b0180fe1018d86650dfeb001a81962de4a6dc226bc6eb55bb2d41c43",
+      "mode": "100644"
+    },
+    "scripts/audit_weather_backtest_readiness.py": {
+      "git_blob": "d7437f28b825b1afdb9cd92950d7d991698d1a18",
+      "sha256": "a5ad34db89d0a2ddf65509727488bcd5297a30049507673aad69d5da7cdabe66",
+      "mode": "100644"
+    },
+    "scripts/audit_weather_catalog.py": {
+      "git_blob": "80bb36d421f67893ca5e66de84c2124e1c8060b2",
+      "sha256": "b2ea5965c0cee7532db273991bbaa13277912079625849ec1a62346a3760fa19",
+      "mode": "100644"
+    },
+    "scripts/backtest_causal_settlement_trades.py": {
+      "git_blob": "9efb770fb590509d2f2c7d04116576995eec993c",
+      "sha256": "44f2fc7419bb2a538cac0b3720838a5ff02bbc995cfabac66622a0a0b8c1bc1a",
+      "mode": "100644"
+    },
+    "scripts/backtest_pmxt_blind_no.py": {
+      "git_blob": "8dd634b92ce9de5f77f0ec50d8f269fbfb6d0930",
+      "sha256": "843441d37040041263f72fe861e79bb8e455344352e0e13faaff249e52ba29f4",
+      "mode": "100644"
+    },
+    "scripts/backtest_remaining_heating_empirical.py": {
+      "git_blob": "f61a236fd9ddf643b3ff9079eb072d221a5d07ec",
+      "sha256": "76ec717de703f975e76c6bcd716f2409a9b4f8de197b87b64d714baa212d78fa",
+      "mode": "100644"
+    },
+    "scripts/baseline_google_contrails.py": {
+      "git_blob": "6b896d2ef39d1003ba46747a09660ab8b9b00795",
+      "sha256": "0f1b28957115eef37f90bffa0e1e0f49110ebbf9049466b3f2255a16399249f2",
+      "mode": "100644"
+    },
+    "scripts/build_bulk_kalshi_weather_catalog.py": {
+      "git_blob": "4fd28e7173ea97511c67810a379e95e67af60e29",
+      "sha256": "c0439277c55bf22da25d631778644c46443a7fe891328a9dd6e4be856edf4ad6",
+      "mode": "100644"
+    },
+    "scripts/build_bulk_weather_pmxt_replay.py": {
+      "git_blob": "3478c70ebe76c0693f9e0cabb4cfd8a3d13c4f4e",
+      "sha256": "35b39e93deae420c7ca4e7e252d8b6ef7553c7a7fa51fc470e909df0f0331df3",
+      "mode": "100644"
+    },
+    "scripts/build_causal_settlement_pmxt.py": {
+      "git_blob": "960ed260175cc9588f970243ef2c7ef0eeb1a392",
+      "sha256": "88e04b533f2041eb29ac99532e094a28ddc98ad4b4678077a166cf12af25dfde",
+      "mode": "100644"
+    },
+    "scripts/build_causal_settlement_pmxt_full.py": {
+      "git_blob": "8d26b81f2d5d43ae9b48e32284be44df0d6c3192",
+      "sha256": "2904c53f81e07f4e906ebc32fa12290357a0250137d142e6ebc8f306b23b8dac",
+      "mode": "100644"
+    },
+    "scripts/build_contrail_activity_panel.py": {
+      "git_blob": "2c6c5e838a75271a37d7ce203bf882aa03ba4b42",
+      "sha256": "24e15240b51b0a2bd6f6abc6321a0301c818cca3c267fdffc8df22ea91b208a2",
+      "mode": "100644"
+    },
+    "scripts/build_contrail_hourly_history.py": {
+      "git_blob": "656098295f48ae4942cd3e336679673675b0b020",
+      "sha256": "584be66fdf69358789faa230c590219bb4a713f3d155d7d6e39c01a7f3072319",
+      "mode": "100644"
+    },
+    "scripts/build_historical_settlement_scorecard.py": {
+      "git_blob": "0e0f803b894c56d83fc763bcd2eba3fd4163e58c",
+      "sha256": "0047158e237fed0593b3b4dccc25bb4e8f604e279c94acd6b377224a8ae8687b",
+      "mode": "100644"
+    },
+    "scripts/build_kalshi_all_weather_live_catalog.py": {
+      "git_blob": "ec7f9d07402a758dcb949dfa7a012ba4addb78c9",
+      "sha256": "20e5d2c3dcb260af08c27258b3b2a45ddde1f40e4e9b942f66827cef8e5db3cf",
+      "mode": "100644"
+    },
+    "scripts/build_kalshi_weather_bucket_history.py": {
+      "git_blob": "3052d54ef84a054f30966a897bd40c25e4a21a9c",
+      "sha256": "c63b83f554d184cee80f8a336be611e36faf461e7610e745cc8c09b71ae1a364",
+      "mode": "100644"
+    },
+    "scripts/build_kalshi_weather_catalog.py": {
+      "git_blob": "98fc8325998bc1e73e2c9e12331117f12243e920",
+      "sha256": "43bf7c729dd7f8824375bd2b20e76ca7ce4201250819dda1bf9abe33b3d11e02",
+      "mode": "100644"
+    },
+    "scripts/build_market_city_contrail_panel.py": {
+      "git_blob": "602a8398d64c30917740076f7eb7545ba167330b",
+      "sha256": "f12ecd60d0e90d84b3dd5bab4a63fce3f9fbd4e5135ddd3a8db3bd2afcb35ce8",
+      "mode": "100644"
+    },
+    "scripts/build_nbm_residual_calibration.py": {
+      "git_blob": "a26dbd156fd1803c2ff4f5f7cce65130c267b991",
+      "sha256": "80a52d0b6ddd0ff7433e7d31ca487f7e7b2d9619ba4da1312217097bc91e92c0",
+      "mode": "100644"
+    },
+    "scripts/build_nbm_station_high_history.py": {
+      "git_blob": "2f7889ba52782d7b3e78e1acc764c75ddbf687db",
+      "sha256": "1444e34a5c95fc02fee336637649d078e961261e2a5b5359b2a9f3209ff41232",
+      "mode": "100644"
+    },
+    "scripts/build_pmxt_weather_cache.py": {
+      "git_blob": "0a39edca06a41c86a572bde25d1aecfc0c3424be",
+      "sha256": "ffda4d556b4e5aa8dc0e6c655682b7b3de0a1ce331f65228e915c1aabc433689",
+      "mode": "100644"
+    },
+    "scripts/build_remaining_heating_history.py": {
+      "git_blob": "697045aed2de38978af90ed177c3a5596ae9ca06",
+      "sha256": "48c39b8db6023fb3d22912c019ff568619e7d67e99fb8afb2362bfe4c114c19c",
+      "mode": "100644"
+    },
+    "scripts/build_strategy_status_report.py": {
+      "git_blob": "9b587b94e8d414d09a63619552b235142768c895",
+      "sha256": "6dfe57290d760dfcc8029bb63ef1b75277e6b084855d762b093ca88658b3348b",
+      "mode": "100644"
+    },
+    "scripts/build_unified_signal_scorecard.py": {
+      "git_blob": "57baaec73990dfbbeb0af89506335fc7eeb26d84",
+      "sha256": "e2c5d06ffd0741a449bbb954f9acb81b56097209d90fca00dda338d43a08d6f3",
+      "mode": "100644"
+    },
+    "scripts/build_weather_company_daily_report.py": {
+      "git_blob": "a8aa5d1850e73da3388da13558b8d938f4fc7b0f",
+      "sha256": "eaa2a34bccbb776856960e5c6e60794b2e921fd7807fce74a42280acd3bf14a7",
+      "mode": "100644"
+    },
+    "scripts/build_weather_company_forward_status.py": {
+      "git_blob": "509fe7112ea21fbed0d442df91ae744e2731b983",
+      "sha256": "27d33b375a46c7015573adb8115ce7da17b49406db06a36e8811fea26edf6a57",
+      "mode": "100644"
+    },
+    "scripts/build_weather_company_regime_history.py": {
+      "git_blob": "f110c155a73397d40981d2ef8e5b34b2441d0f95",
+      "sha256": "36bee27f7f84541d8b02e6c0d8971af5531e2eff788dc8a45e932a9f26c06f51",
+      "mode": "100644"
+    },
+    "scripts/build_weather_today_research_panel.py": {
+      "git_blob": "5ac41bdadee4d213e94d2ac17ac988147d58aba2",
+      "sha256": "b0d51bcbcf41e3f99ab0fa5aa5a3f01e3d892daad79bb18089f39866ba82b283",
+      "mode": "100644"
+    },
+    "scripts/bulk_download_weather_pmxt.py": {
+      "git_blob": "33daa8b84ac164618a6db5e86602e0cd1eb88bff",
+      "sha256": "7d20f5f5b15213533fd22e1999ea3bd2497ad100677e7f72c548debdc5d6a51d",
+      "mode": "100644"
+    },
+    "scripts/check_weather_live_stack.py": {
+      "git_blob": "d748bead59b2af8d5e5aaf8d4da5124932652479",
+      "sha256": "32d8694642984a739aadfab3e765d73e9368c858aad1b949f910ce92fd5e58a3",
+      "mode": "100644"
+    },
+    "scripts/diagnose_settlement_basis_qc.py": {
+      "git_blob": "d666be927f26d305f68cdacb67771fa525b8b99a",
+      "sha256": "9f59f0d8518ae10bfb2f8b0df17dbb7e74aedcc161a1eb5abce0cb40e48b9819",
+      "mode": "100644"
+    },
+    "scripts/discover_polymarket_us_weather.py": {
+      "git_blob": "9b5f0d41e0831d649b7c8f43796f60d532099cd9",
+      "sha256": "577752532119f7f66f638329f7c97d5ebdb918f18230ab0a99db37115844907e",
+      "mode": "100644"
+    },
+    "scripts/download_kalshi_recent_weather_marketdata.py": {
+      "git_blob": "e1baa2e243c5921dc3b7a6a0283c483bdd270be1",
+      "sha256": "f225ba6e0debd35be5c3c27de64af494c004aceda8c8630568001fc598761b52",
+      "mode": "100644"
+    },
+    "scripts/download_recent_weather_pmxt.py": {
+      "git_blob": "c997d25e88ea6370158e6d0f29e49e3bbf70db3f",
+      "sha256": "a84bb5ff57b3376fc288b8357187940be79ed4f0bcdd534e93c51584e2242d2f",
+      "mode": "100644"
+    },
+    "scripts/download_weather_company_pmxt_recent.py": {
+      "git_blob": "7c703541984b29f5eeebd715b9abfcb7bf853405",
+      "sha256": "2ff3abd1393d8dfdde98fa7e3317b0bfb8631a2c8f4b15ebf4f1aa360726f084",
+      "mode": "100644"
+    },
+    "scripts/extract_weather_pmxt.py": {
+      "git_blob": "007a35f5dc1d15ff04e5bc01487cb4a7a6be214c",
+      "sha256": "3f85f81af2400de2fe5fff1ec64c992dc12ef2cb1085b8e05e35016c8a47837d",
+      "mode": "100644"
+    },
+    "scripts/fetch_kalshi_weather_series.py": {
+      "git_blob": "c35997bb4828dd9f24deddce1df7a5ea273c7e62",
+      "sha256": "21d599a214a52d46ee6159d707e345734d382fcfbeb1e849703f7b1aec94e2e2",
+      "mode": "100644"
+    },
+    "scripts/ingest_historical_cli.py": {
+      "git_blob": "113c956e65271d246d45f9b715e03fd44ceb6a15",
+      "sha256": "dfe42b4e53e45e2ca3124104e72c04311af128865d27a325425a84357bcbecbb",
+      "mode": "100644"
+    },
+    "scripts/inspect_pmxt_kalshi_parquet.py": {
+      "git_blob": "1172a9b4f8bd9aa74fd7b9aed62f0df85ad7906b",
+      "sha256": "a28c50099d763ee2e910926bc67c54cf67ee84d8d7fc5132bd608d091dc2ac14",
+      "mode": "100644"
+    },
+    "scripts/install_contrail_current_timer.sh": {
+      "git_blob": "d4a955d9247d483cba2a52fc82577a7506a9b0c9",
+      "sha256": "ec9f55d9ec11b216aff2cb3a2998a2284b9ad77b111673144720e9aed5bec744",
+      "mode": "100755"
+    },
+    "scripts/install_stayton_contrails_timer.sh": {
+      "git_blob": "a258f329fb5b6d8b1329a1341aa476d917a8e0f0",
+      "sha256": "380c6a8f119472b6a51b701fb1dadf17c8e9ac02f378d31d958675edf5dc8735",
+      "mode": "100644"
+    },
+    "scripts/join_qc_flips_pmxt.py": {
+      "git_blob": "b90922e27312c016c3eb149b3d7fdfdb83a62f20",
+      "sha256": "4f3d73dedec2f0caa1006a02f54d327bfb3a5b672aecb417367ef51c084c52f5",
+      "mode": "100644"
+    },
+    "scripts/list_signal_registry.py": {
+      "git_blob": "96c197714b14e540ec68b45c0ccfb8cb95f95c15",
+      "sha256": "f0872c2b6e1503a738ff132742716da47fe4e96e3d9de0681e1be64c343e6809",
+      "mode": "100644"
+    },
+    "scripts/migrate_weather_company_jsonl_to_research_store.py": {
+      "git_blob": "e27216b68338f49269278e1025e6af4108354a2e",
+      "sha256": "674258c59df23beaf40a775da2bf085d7ecc86acaddde29eb866386a72d5f3b2",
+      "mode": "100644"
+    },
+    "scripts/prepare_weather_pmxt_windows.py": {
+      "git_blob": "e93240cefe48e49533c6c00f20a916b3e95bb8a7",
+      "sha256": "895e2417398602bab6a24cab5858b779c8dc4a987dbb71866a5b5cdbb107e959",
+      "mode": "100644"
+    },
+    "scripts/record_contrail_current.py": {
+      "git_blob": "dacbd6cba8ce6748de6a461c23372fe4ea3d193c",
+      "sha256": "26fc8bed1cfc64ec2f88cc72a8e9bfbc0a3a7957c8e49f222c6cc87c1bc450e5",
+      "mode": "100644"
+    },
+    "scripts/record_kalshi_weather_l2.py": {
+      "git_blob": "700558fa356eca0cb143cd9e3d12a6ba884a546c",
+      "sha256": "4a5e8ef93158b2989a2a1f8be32a6a6442e12440b55a10bf3c5f7ae85e204342",
+      "mode": "100644"
+    },
+    "scripts/record_kalshi_weather_l2_archive.py": {
+      "git_blob": "c4ec712a0d2d2053ec6ad96ab93fbe4ec5cb3e2e",
+      "sha256": "c19576029621c1e3f3786de9d2ee55538d5f382239c25a0cb56d66cef067ede7",
+      "mode": "100644"
+    },
+    "scripts/record_polymarket_us_weather.py": {
+      "git_blob": "14fccf6c5b4a3d34bb4c59d24cd81f62e30c0114",
+      "sha256": "b06a60c2873c83a92c78f26e21b5fdc0709960ccdecc0f5695a47c01b8ac0d67",
+      "mode": "100644"
+    },
+    "scripts/refresh_contrail_hourly_history.py": {
+      "git_blob": "dd2a50ef2495817956f3f606cef0a3b72cd1a815",
+      "sha256": "504579a9a4d4076807db699447a49031e0686b6972b95a4a607e680aeac54237",
+      "mode": "100644"
+    },
+    "scripts/report_stayton_contrails_today.py": {
+      "git_blob": "93efd521a3bc323232a3e9c1a44a5373143aa66f",
+      "sha256": "52b39ea9abdf716b4396de310a3389d0a40399bea59d5a732cc783a6be1aed53",
+      "mode": "100644"
+    },
+    "scripts/resolve_kalshi_weather_catalog.py": {
+      "git_blob": "7caeb94a4cded2a1fdcf3257a2411651ba597c49",
+      "sha256": "c2dc9dd7889b8ef5cfe4abc3f65101847bdf8fc6dabb8829a6334411220431e7",
+      "mode": "100644"
+    },
+    "scripts/run_contrail_q90_monitor.py": {
+      "git_blob": "368758217be912fd517e32641ebda33937dab125",
+      "sha256": "7a5188d767fc3f6cebf53dac15e74fffe4bbd8478ff9f3c26a2d7b196b398143",
+      "mode": "100644"
+    },
+    "scripts/run_experimental_weather_company_paper.py": {
+      "git_blob": "ad54e59399a03a2f5aeb495129d45e8ed031a17a",
+      "sha256": "284b9f48f734f32ac89c640eea85429f6f3a07912471058ad3f4cb0e31f3e7a1",
+      "mode": "100644"
+    },
+    "scripts/run_live_alpha_shadow.py": {
+      "git_blob": "2392960a43889bd0ea9ec8dea86dd777247a62cb",
+      "sha256": "fae83e6c1bf7c5caf2e0725e0ba7c2d4d704d7b4e9dd16c40ccdf18d39fb8ab4",
+      "mode": "100755"
+    },
+    "scripts/run_live_settlement_shadow.py": {
+      "git_blob": "8e2ab89e4cfbf659c3968760d42907a966ea3fe3",
+      "sha256": "d313eb9895adf6258978bb526db16bafb02d051a49fff2c550b91b89804215c3",
+      "mode": "100644"
+    },
+    "scripts/run_remaining_heating_shadow.py": {
+      "git_blob": "f59752d479fccbb8aeabdfe4b29e2f3bdecfa481",
+      "sha256": "512fd3a2d5432c8ed3f823cba74ab560741317190665c513a1e6f9d9400cad0a",
+      "mode": "100644"
+    },
+    "scripts/run_weather_company_dashboard.py": {
+      "git_blob": "32bcd3e4e25d822f9d47fd1d3294e57272b0d1c4",
+      "sha256": "588720c2056367063fb6e7ceb6d47aef43442a7b7bd9c7e6862b63aebaf8d09f",
+      "mode": "100644"
+    },
+    "scripts/run_weather_company_diagnostic_track.py": {
+      "git_blob": "b974789a5ca165070bab12b4287bd295fc80b00e",
+      "sha256": "30ee5fb823dd12087c2bebf8ee6f1d8b52cd0d7da9873c07186a8b7b4be67d81",
+      "mode": "100644"
+    },
+    "scripts/run_weather_company_forward_tournament.py": {
+      "git_blob": "f4f12f94d766b62652f254499ce0c533960e3f1b",
+      "sha256": "bb420cd04c812c0a7ed02112163e0f6d0aabe35ab479c9c764ee70ac115145b6",
+      "mode": "100644"
+    },
+    "scripts/run_weather_company_paper_live.py": {
+      "git_blob": "0c6c474ebf34699805f56f763e8827e7b172f97f",
+      "sha256": "734ed2faa91099fa1bd141b22232f742d8631d1895883238f80db47166dd3fba",
+      "mode": "100644"
+    },
+    "scripts/run_weather_tournament.py": {
+      "git_blob": "be8bb458ecea0bc8f0c12f80a18897c403e5aef6",
+      "sha256": "dd4b59e994874aff3055cee5ee122d79b5ffab6c60f7edc61b0b81ed3eb45328",
+      "mode": "100644"
+    },
+    "scripts/scan_google_contrails.py": {
+      "git_blob": "b7dd3558d32a2c2a190144efeb98ff51fa187324",
+      "sha256": "6cf96a1c74c394c1197891e64dda170fe2f80998b10a57bea5b8275f0c29e9b5",
+      "mode": "100644"
+    },
+    "scripts/score_weather_company_paper_settlements.py": {
+      "git_blob": "cf7cf48bc77b99cce56d29a217e0c7a5c6ea73d4",
+      "sha256": "dc8fb02220579b51e2d15ab35b6de558c5f798c8ef776faf512ba2a1dc81e0de",
+      "mode": "100644"
+    },
+    "scripts/smoke_pmxt_kalshi.py": {
+      "git_blob": "4ee145dee8e68f62d1b208eadcc6f0f9eff44ee0",
+      "sha256": "79d863d9d2e53993f0758cd989b61c0d647612b346430439863c98f175f08228",
+      "mode": "100644"
+    },
+    "scripts/start_paper_strategy_stack.sh": {
+      "git_blob": "3e606e6b09d60881657a95a01237128dd8373121",
+      "sha256": "992789a41e9f463f257f27919299d08ef25adb4140ed94759c58eaf05008528c",
+      "mode": "100755"
+    },
+    "scripts/start_weather_live_stack.sh": {
+      "git_blob": "6e57143f4e9863752ecd5c22a6ebb356dbe82033",
+      "sha256": "7197b65ff1d060b41f6480095a9827216dac75dc98b18d9ef60659edbe45f530",
+      "mode": "100755"
+    },
+    "scripts/study_cli_asos_bracket_flips.py": {
+      "git_blob": "35b751ac2237c770d3822de5476c6e8b97e63d2a",
+      "sha256": "5a0026c813c61b2bdfc781d5663712722fb55a83699d0241ccd981c524bb3443",
+      "mode": "100644"
+    },
+    "scripts/study_contrail_q90_bucket_edge.py": {
+      "git_blob": "eb228679d1d06b5ebb4671e34534685ded8e08cd",
+      "sha256": "40d06465ab1d7478ba9e6f2dfb15efadceff27d940c0c829816bbc0ecd5eb0ef",
+      "mode": "100644"
+    },
+    "scripts/study_remaining_heating_empirical.py": {
+      "git_blob": "e64cfa0237f89494abb47e64d968cd87ee50bf1c",
+      "sha256": "39994650870355dc00656f06033cbd53edab62b5cecccef6f3a5cc1f5ddce9ac",
+      "mode": "100644"
+    },
+    "scripts/study_settlement_basis_history.py": {
+      "git_blob": "54c87e234245b476ab0a27f6b0ed6284b2d77216",
+      "sha256": "52700c9cadf3bd6357b33dc45ae07cdd204e53208bb3c6e5abf5237e4f4ca6ac",
+      "mode": "100644"
+    },
+    "scripts/study_weather_company_asos_proxy_basis.py": {
+      "git_blob": "756a8467d4a4fa7ff85cef5906290a3f509501b7",
+      "sha256": "4495c5039b5cb930c67b41c8d9c169bc2c699b4effbb8a9339b064eb70e7ab15",
+      "mode": "100644"
+    },
+    "scripts/telegram_weather_paper_watcher.py": {
+      "git_blob": "704f3b21034e3ed98bf27257d70fcb6ce939b816",
+      "sha256": "22c0708440b9b1513c86b57f14f17201506ae0b441ee892df6971c29c1445f51",
+      "mode": "100644"
+    },
+    "scripts/validate_causal_trade_date_blocks.py": {
+      "git_blob": "fd170f30961c251536331bc97e4c8f633e479ef8",
+      "sha256": "8a97208d9a6a0e010e9c32ae522b6c468c318319ebdab0d19a3bcc25f336b222",
+      "mode": "100644"
+    },
+    "scripts/validate_iem_asos1min_real.py": {
+      "git_blob": "4910eba6f73e5aae44ead43e245f0b8295dbe8c9",
+      "sha256": "0d22627d8fd007aed4a6a169510b9bcb19ced81becae009f13274be8810a6a76",
+      "mode": "100644"
+    },
+    "scripts/validate_pmxt_kalshi_realfile.py": {
+      "git_blob": "cb701f997cc31cf1245007ad9b8369c133447ae5",
+      "sha256": "b0716074fdb8517238563f4af88c5d8446b1380a1ca8a836779642b491fa193c",
+      "mode": "100644"
+    },
+    "scripts/weather_live_status.sh": {
+      "git_blob": "71aa051bfbe0d27ec68da336773f2505cda55daf",
+      "sha256": "1bc44643eed4b2d9d57e845d6b0caf73f35d677bcf8835e905f5beb4f89ae81a",
+      "mode": "100755"
+    },
+    "tests/test_alpha_delta.py": {
+      "git_blob": "2e62271b7f14459395b4dd9d110333383a8c0147",
+      "sha256": "a0395ab9a8314f83fa74bd92bd8c8ea2c65f3f39abe2045cde5262b9efe620a6",
+      "mode": "100644"
+    },
+    "tests/test_asos_qc.py": {
+      "git_blob": "2ae11eeaea56f5e172db0ef00df8cc89a876a801",
+      "sha256": "f32e47558a3bae9c245d773acd499de44b1fc1db12fe0c9278f98b2d78eda9f2",
+      "mode": "100644"
+    },
+    "tests/test_bracket_study.py": {
+      "git_blob": "26e86916ec9c18b903be01e9711afa7b5c93e76a",
+      "sha256": "b61466731889168c02ccb514d4e6d92c4ab455d1a22b381b681b6802c8f766b2",
+      "mode": "100644"
+    },
+    "tests/test_bulk_weather_pmxt.py": {
+      "git_blob": "db7a833e2e5158a0990272c79ebf8948748b338b",
+      "sha256": "5fee5e93dedc5c803668f71cda97271501d218e2fe95ea277c2db213b4e8c24b",
+      "mode": "100644"
+    },
+    "tests/test_causal_settlement.py": {
+      "git_blob": "041e5e906aca54a0b9c38416303720acc837dbf3",
+      "sha256": "b19d275aee83bbcf440f91d707d6e576ab57d852178223308b6eec531b5509cc",
+      "mode": "100644"
+    },
+    "tests/test_causal_trade_backtest.py": {
+      "git_blob": "ac657341e4ca593abd8730df53931c7a5479177b",
+      "sha256": "4e203c54e07f0abc34a0ad1c8b9499d011905d824c440ae1b340b50e05b58234",
+      "mode": "100644"
+    },
+    "tests/test_cli_archive.py": {
+      "git_blob": "de5d710c5cecff1096b961a61b18e1a74ef7574b",
+      "sha256": "2ed4d1cd0c000dc690b6937316d488d61188ca5711e934ff44a9c1eaf4197126",
+      "mode": "100644"
+    },
+    "tests/test_contracts_crossvenue.py": {
+      "git_blob": "9a2d2d427bb709de60cbf355368c3070fbb04a7a",
+      "sha256": "fcd45be1fdb6f3ad44f7ff9d0a644227edc32adca1ef66a91212d958c69ab6ed",
+      "mode": "100644"
+    },
+    "tests/test_contrail_q90_study.py": {
+      "git_blob": "4634937ffb808171df6aa770cd6f047017dd1c80",
+      "sha256": "d38501634caf2c4e47234623eade6dd4bd82cbacc5c2497433bae943a409aeb9",
+      "mode": "100644"
+    },
+    "tests/test_convective_rtma_text.py": {
+      "git_blob": "4a6e1ab27beb844207b4534c08b14636a10eb13a",
+      "sha256": "6e23308b49c25f44ae8c042929e7cbfaebd3482236cdb106ee83f1d240d152b4",
+      "mode": "100644"
+    },
+    "tests/test_diagnostic_fail_closed.py": {
+      "git_blob": "a98204a52b7d8fdbfb63c35f7366e85fe45f8b87",
+      "sha256": "3f8701571e59b8349f4d92a579bb1bdee20ed24437d09b328f74247fe7f06def",
+      "mode": "100644"
+    },
+    "tests/test_forecast_residuals.py": {
+      "git_blob": "50ee54586f1350aca81d409160b21b0b1216db36",
+      "sha256": "2c6894e88789449b7a71d13d53da682eb23ad349a71d71dbb5714412ea115d4b",
+      "mode": "100644"
+    },
+    "tests/test_google_contrails.py": {
+      "git_blob": "0c32133ea5ce212971b6a0edf4b6825f7db1b532",
+      "sha256": "dc09920dcdbcb3ad8a43d7c7e9a15ad8da0cc34dd96cfdbee1bb9358966591d7",
+      "mode": "100644"
+    },
+    "tests/test_historical_research_replay.py": {
+      "git_blob": "62d84b6e576101758293777be6e6c32ec882df03",
+      "sha256": "d6a50863855feb34925b862d5fd54c39b0177f1145d6dbf6f4f6cad98539c089",
+      "mode": "100644"
+    },
+    "tests/test_kalshi_l2_archive.py": {
+      "git_blob": "5ff5af7152b8deab05906bc8d13f4b4c9988c646",
+      "sha256": "8c1e718e61e9402df596c63ecb51fcc8cbf16fc5ac0f826298287653883b3e95",
+      "mode": "100644"
+    },
+    "tests/test_kalshi_pmxt.py": {
+      "git_blob": "c8e5584fd920f7156b43697d50f85d79f56548b9",
+      "sha256": "38ef88cc2629055952b85978392b8fbb236cdf450a244ee62a0c915ea90cf535",
+      "mode": "100644"
+    },
+    "tests/test_kalshi_pmxt_raw.py": {
+      "git_blob": "01760c9f9e103b1e2e530f8f9d1760377851158c",
+      "sha256": "fbc759e66e5750502798fbbe5e6d03daa9d48a887bbc691acc1046eea428632d",
+      "mode": "100644"
+    },
+    "tests/test_kalshi_weather_resolver.py": {
+      "git_blob": "3cfae09e32edfa9b52c238ce8f99f81be2fb6bfe",
+      "sha256": "0c30d0baa143c3dd46d7dcfdb56bab0600cb867c940db7ac03eed7728452e84c",
+      "mode": "100644"
+    },
+    "tests/test_live_alpha_shadow.py": {
+      "git_blob": "8fb83b077f1c406f6b5bc538db21a7bf155284a2",
+      "sha256": "6b85ffa0e0b564c0235ae49030c79ca97724894a00f886aa5f325739d832f7f4",
+      "mode": "100644"
+    },
+    "tests/test_live_kalshi_ws.py": {
+      "git_blob": "9314a85e2c6d72b603ca02b82815d18349ab4b9a",
+      "sha256": "3ed3ac4b2dc2caca37e0e525752d29c4ac31199164fea346a03d12a18c7b6fd4",
+      "mode": "100644"
+    },
+    "tests/test_live_surface.py": {
+      "git_blob": "3d9e99d075390f65b058744fe22ac821b022d959",
+      "sha256": "100be2f61196c57086671c692fd38ff95ecb69105346f25b4fb4b22967dd05ee",
+      "mode": "100644"
+    },
+    "tests/test_ops_health.py": {
+      "git_blob": "cbe6a5192ad180ad5322f60001a6b449e43828af",
+      "sha256": "1fac96c4b7522b55a88a8ea147d3edd3289b59afd0a81f319621373843bc171f",
+      "mode": "100644"
+    },
+    "tests/test_pmxt.py": {
+      "git_blob": "0db8b32dc8cd43e75a508169e7e7b1fec1f8a5c2",
+      "sha256": "6bdbda85710f2716f0142c06867a672fd5f0811a07205c895b0e3a39f2f4ec2f",
+      "mode": "100644"
+    },
+    "tests/test_polymarket_us_weather.py": {
+      "git_blob": "130153c01107f247159c5576a3fbb1e631f74acf",
+      "sha256": "d5dbfc24cee677825204e5ae34e3168fa38172c834e49c8d1b3e6e83dbd493b7",
+      "mode": "100644"
+    },
+    "tests/test_polymarket_us_weather_collector.py": {
+      "git_blob": "5436816e7e67d92ae5adbaa3ddad8b4d07d4eaed",
+      "sha256": "26dccb04ef7ecb5ed104798489ae1cbc33fa4019739233a5890a2d49964c5a67",
+      "mode": "100644"
+    },
+    "tests/test_probability.py": {
+      "git_blob": "a6979e464ca19a14efa1dc43c552bbab4dad2e38",
+      "sha256": "d3b2f8c0bd697e31745c1e2017bd00a406ee358c473bc63e6a359a0e101be30a",
+      "mode": "100644"
+    },
+    "tests/test_remaining_heating.py": {
+      "git_blob": "07bc8769c3ce0c26ce4aa31d9a6fab0cf04890a2",
+      "sha256": "1549a1e08d42f9859fcb4ddac35b33725d2e96bc06a622315d432d50c029a3cf",
+      "mode": "100644"
+    },
+    "tests/test_research_pipeline.py": {
+      "git_blob": "c000168527afc46d8b886b4c6d47a9ce77974e41",
+      "sha256": "32be36f5ed33bdc161c08993118690ca5e622e33c29059ac8180718163f5f87e",
+      "mode": "100644"
+    },
+    "tests/test_runtime_hardening.py": {
+      "git_blob": "e5f6e4fe366531bd4f90638dc38068946b321742",
+      "sha256": "e249933cadcbe5ca640d76de0cb30f5a1472794458712f871861d0ed87018196",
+      "mode": "100644"
+    },
+    "tests/test_settlement_money.py": {
+      "git_blob": "f9982d28ad64231f5d597ddd1583e4d591d6d97a",
+      "sha256": "e3968693a07f6bfd2a36592b35cbe60caacf56a612d8bc4f7ffba4654845a28b",
+      "mode": "100644"
+    },
+    "tests/test_settlement_precision.py": {
+      "git_blob": "b53ae525eb101cc820bc33c0deddf2b4650f9117",
+      "sha256": "084b52666197fa7272257500d5ad9ebd243d7d7a18cf6cbd12bb0a05c002e1ea",
+      "mode": "100644"
+    },
+    "tests/test_settlement_research_strategy.py": {
+      "git_blob": "f04b3d195c7c8f7edc7d0d521a27d961f8e8cb7c",
+      "sha256": "da97bea9bd2d33b26ed8ed6ac5905317a114c218a22c61023548a654d49f64a5",
+      "mode": "100644"
+    },
+    "tests/test_signals.py": {
+      "git_blob": "8ea395488bdf522de81dba6f0c21ba70e0f6aac4",
+      "sha256": "2bb58a7cb4d4706ce6a7ab78e91e110c89c9a1a965536db72e8acf863870794d",
+      "mode": "100644"
+    },
+    "tests/test_station_clocks.py": {
+      "git_blob": "275e8f2099fbb5ad9787443d8bc0caf2e685c9db",
+      "sha256": "8312a5eddb2e4875d81a0202dcc217fc1952a6e80410160fd60372c584509d1a",
+      "mode": "100644"
+    },
+    "tests/test_surface_iem_asos1min.py": {
+      "git_blob": "ebc95ad32db21a46bc46100f6d4eea3f1eed298e",
+      "sha256": "e94dd530ef58a427f3c34e758d1f386d8e2590b50fdac668bdd12a8191c3848d",
+      "mode": "100644"
+    },
+    "tests/test_telegram_weather_paper_watcher.py": {
+      "git_blob": "a79fe4a8474a2b67bca1216a26a3aae54ea03e67",
+      "sha256": "b81b3df2bb051a2e61203f3997107504fcae4078a7bca890af8c7ba1f42d1edf",
+      "mode": "100644"
+    },
+    "tests/test_validation_promotion.py": {
+      "git_blob": "0f7007ba9df49e4873a73974a37ecf746c411528",
+      "sha256": "a053f1017e7516c85cfa65fc4a12ace1cdeba86a2d4bfedaf6451ea1c811dba0",
+      "mode": "100644"
+    },
+    "tests/test_weather_backtest_tournament.py": {
+      "git_blob": "d11cb8b765989a9c94c98f20e4d5461c9a80d72b",
+      "sha256": "aa17266672f25072d48e18db5cb8c325e31d1bd33f8a9ff6eaee5694a8bf4c47",
+      "mode": "100644"
+    },
+    "tests/test_weather_catalog.py": {
+      "git_blob": "bfb0cca1de8209fc8c6a8f1f6159073c7e87a3f9",
+      "sha256": "8f2f794e823dba3c6800aaa0987febb6f2a67a14c3b8d3287811aa42799a9549",
+      "mode": "100644"
+    },
+    "tests/test_weather_engine.py": {
+      "git_blob": "877fbbcd05018326655b4a97bc4fbb8ec767bed5",
+      "sha256": "3b2261894d6ce9aa93219305ce89001c418f118212b10687beed7e257b9f31d4",
+      "mode": "100644"
+    },
+    "tests/test_weather_pmxt_windows.py": {
+      "git_blob": "e1d21fbcec853739beb31f5cc6c5a7d17ff81497",
+      "sha256": "0b408a890155703e6c99cad368af1e080f295845a75f04d76a054dff86d354d8",
+      "mode": "100644"
+    },
+    "tests/test_weather_settlement_reconstruction.py": {
+      "git_blob": "a6da0fb8c5f4db604af13710c845ae8f2d5b49fc",
+      "sha256": "89716c16005586391866941f653eb2e233b794d6893e48505fd36f72cec1bbb1",
+      "mode": "100644"
+    },
+    "weather_alpha/__init__.py": {
+      "git_blob": "07c5de9e2c430f9f659c069c2c1c72210ba8abee",
+      "sha256": "b576d15ec3b4344fd45759081e26534d0407d1f8f45362a8c7136eb2efe0ceb3",
+      "mode": "100644"
+    },
+    "weather_alpha/alpha_delta.py": {
+      "git_blob": "4610a56535ab18a78dbb15e314db56618196a5c3",
+      "sha256": "aadf4b54bc5e6e659acb891a7756507b45b03db4aa4445c3a63ec2aa4ff38e1d",
+      "mode": "100644"
+    },
+    "weather_alpha/backtest/bulk_weather_pmxt.py": {
+      "git_blob": "aa1d07c18877ad6a5565439418154297e910e72d",
+      "sha256": "8970d2efab63fa6690f2f71167b6a282a664c65185ca583f0778ecf196eac447",
+      "mode": "100644"
+    },
+    "weather_alpha/backtest/causal_settlement.py": {
+      "git_blob": "43d9543da38ad2baf0df9af6899b192c9d43b33c",
+      "sha256": "350ee431086fd7f6b9fb618481b3253fd8a4c0a039d5a836ea13b035c72770d0",
+      "mode": "100644"
+    },
+    "weather_alpha/backtest/causal_trade_backtest.py": {
+      "git_blob": "a1993bfff0aef397b9bb002be7d25d429f807440",
+      "sha256": "8bb15037a3e6f0850c379ed81b7314f7ce68011519ef1b70c684ade1b9e1553c",
+      "mode": "100644"
+    },
+    "weather_alpha/backtest/kalshi_pmxt.py": {
+      "git_blob": "182bc043fa9c2e23fc0a26dd81afb2365896d9b6",
+      "sha256": "d5c37df08ccf56babc0ff5943af7a2db08e1f5b7e2a63144c956100a3b1e1155",
+      "mode": "100644"
+    },
+    "weather_alpha/backtest/pmxt.py": {
+      "git_blob": "3af07fc4c6156c9aaf743278f7e22bba47ff7ce7",
+      "sha256": "8a8aecbcc97281ae34c7123b2da26168a1c4d32ce679ecee65d79ad0a0e2c53a",
+      "mode": "100644"
+    },
+    "weather_alpha/backtest/polymarket_manifest.py": {
+      "git_blob": "414aefb7546c8bf5c3afbfbf03df8bbefec9bdf8",
+      "sha256": "c76f7372d9da2fd72a6cef80ee21bb9c97ebbe93505034c8f8ad02d2d78add44",
+      "mode": "100644"
+    },
+    "weather_alpha/backtest/settlement_money.py": {
+      "git_blob": "aa080cec213ff5c457db217fc6e17e884cc3fc44",
+      "sha256": "261e3826a45d0ca92ac12949405cff25bff84d6b9a80aac2ac2fb461aff7ce4d",
+      "mode": "100644"
+    },
+    "weather_alpha/backtest/tournament.py": {
+      "git_blob": "d1ced7f637f62e4001b31dd6e4c936ca51941a7d",
+      "sha256": "48da5175468baafca3f9d276f2c0198f5c1d6aca6291879fe95b375f8446f38e",
+      "mode": "100644"
+    },
+    "weather_alpha/backtest/validation.py": {
+      "git_blob": "6a12c41a9c97c4de7e1ef0ddbd1a23ab9b25b8f9",
+      "sha256": "48322eac821775bfd60330085c3a9b2b93391440b2ab71ae82ba03123a9b43e4",
+      "mode": "100644"
+    },
+    "weather_alpha/backtest/weather_pmxt_windows.py": {
+      "git_blob": "0921913e8f445b767c0115f8d1e0dd6bfe30fedf",
+      "sha256": "102b46cd7a1066de70c472eb0c99e47e4e09b67faaa878b3c764d5afcf4083a9",
+      "mode": "100644"
+    },
+    "weather_alpha/backtest/weather_scope.py": {
+      "git_blob": "625c335b7cb173ce8cf0ddbb8d80e8f6970d8b56",
+      "sha256": "19ff303b3f388c6047e8fd85cbff584a6b0a37d9367bf2dc667c3a83a56568dd",
+      "mode": "100644"
+    },
+    "weather_alpha/engine/__init__.py": {
+      "git_blob": "ae24070b77d17863aa69c13c331bb456bf9cf28e",
+      "sha256": "a395b79688512e19439e00517fd7fc88c23f94b4a64911bb51889c58d6db07ec",
+      "mode": "100644"
+    },
+    "weather_alpha/engine/backtest.py": {
+      "git_blob": "4d01bd1bcd09f6279fc617eeaba8efbfb4b3f320",
+      "sha256": "d700f82b48b7d389d11597640aa42765ae83d39ff378e66c9025ff9f9adb64af",
+      "mode": "100644"
+    },
+    "weather_alpha/engine/costs.py": {
+      "git_blob": "1cbcba0770ff9cdfb9105f2d6020cf5e12f0ddb9",
+      "sha256": "0255fdc2a8a5b8a5fa7f967a195ead112e55a6d0a11757563624d6306a39d8be",
+      "mode": "100644"
+    },
+    "weather_alpha/engine/duckdb_store.py": {
+      "git_blob": "5544570223655347323f536b50ec0063cf733396",
+      "sha256": "462b23b67f84200830af95508e664195aff03880ca661a795de6ba087a2698f4",
+      "mode": "100644"
+    },
+    "weather_alpha/engine/execution.py": {
+      "git_blob": "4d873ce36b0ead4c7546bebf61e4ddb929c83f5a",
+      "sha256": "8ed24d748477e9563d4f3abf07efd1ae831ff9f303f118a018d2894979ed11f5",
+      "mode": "100644"
+    },
+    "weather_alpha/engine/kalshi_live.py": {
+      "git_blob": "cca7375284cc9b087287d6c16160925c8673cf49",
+      "sha256": "e5be945ce8f959948a60f00f0a06d537744aac7a3785cb6a707e4d33842645ed",
+      "mode": "100644"
+    },
+    "weather_alpha/engine/models.py": {
+      "git_blob": "fc860fcbecf2b6f13a65468a7c757ed923f627c4",
+      "sha256": "5efdbee65419116d504d24e5962f870c2370f758da8a5c8f2c0df43d0fd64723",
+      "mode": "100644"
+    },
+    "weather_alpha/engine/paper.py": {
+      "git_blob": "63e4e1d4085782d5160aae739cc960f31b733d23",
+      "sha256": "7be70f8b237acbe13d13b59f87b39a984e9ae75b76b37f87a62bd54a3c446410",
+      "mode": "100644"
+    },
+    "weather_alpha/engine/recorder.py": {
+      "git_blob": "c636cecb4cd926638d24a387e89a191696d6c379",
+      "sha256": "4f047ba1b1fdc85be6f85489743fa3ca2c49224c76990932f3b3fa026f8508ac",
+      "mode": "100644"
+    },
+    "weather_alpha/engine/settings.py": {
+      "git_blob": "e3ba393511d7d3bd68b7188aa7bb9970a7f5675a",
+      "sha256": "9a0922d692bbbb1a97f76ab626e969595a08799896ddb2aad4d5627dc74dcd94",
+      "mode": "100644"
+    },
+    "weather_alpha/live/__init__.py": {
+      "git_blob": "c0364bd1dff07d0cde42051cc26f3f5f2f6bf28d",
+      "sha256": "dc1a73bb36e99c92bfda22e1e1f906c49f64478e48cb9c98361889da47d8878b",
+      "mode": "100644"
+    },
+    "weather_alpha/live/kalshi_ws.py": {
+      "git_blob": "6b788f9e1091eea109329388ff7eef299cbaf956",
+      "sha256": "b36b2742431721698647bb3b7e1e98e50534b6c971b061d03dbdef7579b55ba2",
+      "mode": "100644"
+    },
+    "weather_alpha/main.py": {
+      "git_blob": "4ac6fb6d7b87f3246a66aa7a8145f4fe70a38e55",
+      "sha256": "bccb864e0692328ed14b325983e7cd00118684b3f0ac6f14fe30e380c291763f",
+      "mode": "100644"
+    },
+    "weather_alpha/markets/contracts.py": {
+      "git_blob": "cf662e00fb3064d6d8f21bbc4938d32d36c890dd",
+      "sha256": "55ab4965cbc3470d74562dcb4ec12e9d4f146ba9267c7d2cf886560da6983ab5",
+      "mode": "100644"
+    },
+    "weather_alpha/markets/cross_venue.py": {
+      "git_blob": "77b09c5352f536c8e509667d25b73acdaa07a56f",
+      "sha256": "eec492463abd0fa53a9ec0977befa3e4943ca2172fb8ab2f6d2fcce4a5d1993b",
+      "mode": "100644"
+    },
+    "weather_alpha/markets/kalshi.py": {
+      "git_blob": "50841b98d62543c233c5731b7ee5c402bc54827c",
+      "sha256": "cf88d9e68620d2e2ad96f3e8a84ee32b4b85469a1254244d891f1424433f2248",
+      "mode": "100644"
+    },
+    "weather_alpha/markets/kalshi_weather_resolver.py": {
+      "git_blob": "1bdc8387b301d055c54aa76dc8050c11b27fb22b",
+      "sha256": "289e7981525d358e5eb805b77ba361134eb1a0769529b37222afe3baade63e73",
+      "mode": "100644"
+    },
+    "weather_alpha/markets/kalshi_weather_series.py": {
+      "git_blob": "27eeeab86895a575f11f97df3d688eff0f3844bb",
+      "sha256": "31b565037b6b330edbc3e0276ee23f0c2f13ff995975c8b5e27934e0c5d5935d",
+      "mode": "100644"
+    },
+    "weather_alpha/markets/polymarket_us.py": {
+      "git_blob": "3810a45435f06644637aa633b99d7538613fdd72",
+      "sha256": "32c0cacee63f96db1ec261a50393ca8add856356ad84786b9831b9a52c8f7d1b",
+      "mode": "100644"
+    },
+    "weather_alpha/markets/source_family.py": {
+      "git_blob": "efed6515db00eff3e7a4e7453dd489ae71a86dae",
+      "sha256": "ed0e10c5f70fa4b002e4a0105d37ce80fe75fa6a8fa81c97307beff1f46800fe",
+      "mode": "100644"
+    },
+    "weather_alpha/markets/weather_catalog.py": {
+      "git_blob": "df471eb2682a5c15e2be383e8154820ad866abed",
+      "sha256": "2b07776add052789b54ecdd7c245182174d60e96c07851ba866e29063ce4878a",
+      "mode": "100644"
+    },
+    "weather_alpha/models.py": {
+      "git_blob": "6fb6893cf155113035b6ea1764b0ab28243fda8b",
+      "sha256": "e0c3b60fe7e2e0a73f81ac394c23734363d412bcf17fcf9e97b2193580ff6381",
+      "mode": "100644"
+    },
+    "weather_alpha/nowcast.py": {
+      "git_blob": "96fa36ed85a258a8d61a130896db2f9d2159a8d0",
+      "sha256": "74c7281b1d375984543321583862e771f1c9dbc35db7233d2c137fa12cd6c67c",
+      "mode": "100644"
+    },
+    "weather_alpha/ops/__init__.py": {
+      "git_blob": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "mode": "100644"
+    },
+    "weather_alpha/ops/health.py": {
+      "git_blob": "f744fc6641c23a7cc7cfc739e9ef178a6bdabca6",
+      "sha256": "f3a571cec1c54d65a28b96a8efc4a9d5f2346e5d9a9e50edb01239d5dd3637f2",
+      "mode": "100644"
+    },
+    "weather_alpha/probability.py": {
+      "git_blob": "7d97978244d2aa575d4908cdb6204e06e57b068f",
+      "sha256": "c23f81847f9f20e7a3850953ad6426e500bbf76f372be3ab8258fea6a11ee40c",
+      "mode": "100644"
+    },
+    "weather_alpha/providers/convective.py": {
+      "git_blob": "c1c73312ff4af4638e5687103d30f4471b9f551a",
+      "sha256": "968c5640567eeccfd4408f2ee574cfba770e0020013118161b6cc101abea2b97",
+      "mode": "100644"
+    },
+    "weather_alpha/providers/goes.py": {
+      "git_blob": "e1dd002d8653d9284a76c42acd375ac7cb766d90",
+      "sha256": "3e4e952ba65897c80bd928d181d9a61ff9d5da73497de77b7325bd169b97af33",
+      "mode": "100644"
+    },
+    "weather_alpha/providers/google_contrails.py": {
+      "git_blob": "028ca356fe4556f313d0e714880f58a4f14c6241",
+      "sha256": "1f21220592f666104aaa0870a03ee43b428e9e4e455341ce87c3a0944a0df7ec",
+      "mode": "100644"
+    },
+    "weather_alpha/providers/hrrr.py": {
+      "git_blob": "aeafeea997e9482243726c48b3551581872e2fd2",
+      "sha256": "0a77c3b556903a4da3280ec4048e26343afed73af7ed2e093322f34336f9d779",
+      "mode": "100644"
+    },
+    "weather_alpha/providers/live_surface.py": {
+      "git_blob": "4d8b1f91824f18749aa1fa626cbbf51952b84aef",
+      "sha256": "c40d90d7bebbdcdcbe99d327da63467492e00625e67151730ba23e1a0c377d47",
+      "mode": "100644"
+    },
+    "weather_alpha/providers/nbm.py": {
+      "git_blob": "00718cfee02ef776c111fbb21efa5cdc7d4ce4b3",
+      "sha256": "eb72039e87b2b86b2def508ee2e674549b80c207b29c66dc5e875a63e9513176",
+      "mode": "100644"
+    },
+    "weather_alpha/providers/nws.py": {
+      "git_blob": "93e821363c758addcc0d73de977ca8a159bd70c5",
+      "sha256": "4e5f80852088ebf42091cd92448ac435ee135e8f37b2ed1eb97a6ca4736275f9",
+      "mode": "100644"
+    },
+    "weather_alpha/providers/open_meteo.py": {
+      "git_blob": "0f571570867b79793b28331f40724cabc0ef469f",
+      "sha256": "29183bd21e6cc430a178ab5d5d40a9336af6c2ec316ea00f227a1a5f1b5681a3",
+      "mode": "100644"
+    },
+    "weather_alpha/providers/rtma_ru.py": {
+      "git_blob": "5b5b840b8e7f0e1e64999e5d2b6c54ef7369bcde",
+      "sha256": "446b00b3f4c300296719954da36fec8a470632ad40894024c26227deadabb673",
+      "mode": "100644"
+    },
+    "weather_alpha/providers/surface.py": {
+      "git_blob": "fcd791286c749365135ffdb328904276f7a093f8",
+      "sha256": "43d4025834fdacd3281e73590888ca9c86fddc12737d802a352a0df8c45fb3e6",
+      "mode": "100644"
+    },
+    "weather_alpha/providers/text_alpha.py": {
+      "git_blob": "6f96bdf60afb2af1bea5cd1fd5ab51ac100effcc",
+      "sha256": "0b140091e0282c5752cc6237aa871e93c2d159997b6f72d843ececc69e2ea277",
+      "mode": "100644"
+    },
+    "weather_alpha/quality/__init__.py": {
+      "git_blob": "e17b75a55b3ab2276e0543119bc2c9c5bfbbf05d",
+      "sha256": "d976e81220c83e89b0bd55060b0275c0f3b185bd905532d945972356377a0890",
+      "mode": "100644"
+    },
+    "weather_alpha/quality/asos_qc.py": {
+      "git_blob": "e3e1c2d93e4512e48a433a28d3af397a5699d115",
+      "sha256": "ffe9495528bd8e3d2d7d70f898c5d7aa52f6cd889edb8cc6d136b6f1274dad7f",
+      "mode": "100644"
+    },
+    "weather_alpha/research/__init__.py": {
+      "git_blob": "20dfbf807a1f3e790cce3d2be241ec65dc982a65",
+      "sha256": "758f81b68cd54074597c27cf216ee3ab7bf921038818746e5f695bf0c14a95a5",
+      "mode": "100644"
+    },
+    "weather_alpha/research/forecast_residuals.py": {
+      "git_blob": "a910d182e913334a3334b4bc809aee0e959fd631",
+      "sha256": "53363c3480b5b6bbdb46f7b2d583e211f9393c5d9108c958a684ae2a566b953a",
+      "mode": "100644"
+    },
+    "weather_alpha/research/historical.py": {
+      "git_blob": "eb11a7c75d41988a2c2fe58d069af24ea432b6cc",
+      "sha256": "10fe2a05f46997d58b41b32637b9fd356d95ea2ef012ada115990eb464475b0c",
+      "mode": "100644"
+    },
+    "weather_alpha/research/nbm.py": {
+      "git_blob": "ca1dc6cd08378ac545820e48a3a7a0d902ba00f1",
+      "sha256": "2c5391e4a6fe4a2d294bc77b009cd94219de7421070cd4cd8d44dc37293c8fdc",
+      "mode": "100644"
+    },
+    "weather_alpha/research/registry.py": {
+      "git_blob": "66548a586b6d74c086b25730b6825b1d5c2362db",
+      "sha256": "a8a37a4c44e620206ad94df38baf9e6220c065d0e30e1481b6746ff5f708640c",
+      "mode": "100644"
+    },
+    "weather_alpha/research/remaining_heating.py": {
+      "git_blob": "0e8ffd9b44c30da8aa542c5d95ca03026518036b",
+      "sha256": "27849f625f3ceee5f8ac3411a12f48862586c3ee26d6ffd697a92825a09f1c26",
+      "mode": "100644"
+    },
+    "weather_alpha/research/runner.py": {
+      "git_blob": "ce34bda3712803fd30b8c3a8749e05c1b1f563fb",
+      "sha256": "e4ab7b761a9fb07bab459df00045d9818ea0a37828a13180f3d6134278976184",
+      "mode": "100644"
+    },
+    "weather_alpha/research/scorecard.py": {
+      "git_blob": "97cd7db38e23a0306ba06fb8ad0380ba8c5be173",
+      "sha256": "c0192ce35063b0ddc23bb5cd4ffa740e63ea6e3a06fc819f22494ffef1a6a9c6",
+      "mode": "100644"
+    },
+    "weather_alpha/research/settlement.py": {
+      "git_blob": "ecd08802bb942bca06a1cd5ea2b57bbc96236ccf",
+      "sha256": "21c35fb26603be41c64d748cf520b43c1d576e50589d5d77c7a38cb7fcfd4eb0",
+      "mode": "100644"
+    },
+    "weather_alpha/research/weather_company.py": {
+      "git_blob": "8c471052722b28d474a3bdc70cc0af402bc894c6",
+      "sha256": "2f81147c99a8503e9c8ee30924543acfe4521347531ce148860dba27ea823cf2",
+      "mode": "100644"
+    },
+    "weather_alpha/service.py": {
+      "git_blob": "8bdc823e9b429d1b4863ad8e8e167e6d4551b907",
+      "sha256": "195fe7c5a83966bc32f326f0bcd120afb1bf7c9b68efe7a503ef7ea727550a73",
+      "mode": "100644"
+    },
+    "weather_alpha/settlement/__init__.py": {
+      "git_blob": "6f9ca6d7768bc9b89bdfd68606a39a17a9d202de",
+      "sha256": "5b8f5bee1e6bf279000e40eb02056c4bed1075fa9257090bbd713197864595b6",
+      "mode": "100644"
+    },
+    "weather_alpha/settlement/bracket_study.py": {
+      "git_blob": "709e8d12399aec275d3694c5ba892973a9b1c000",
+      "sha256": "c81823bd2b1bb91eca9fe1cdd5e2c08a22e4c0109d0241aa8bb9907829166380",
+      "mode": "100644"
+    },
+    "weather_alpha/settlement/cli_archive.py": {
+      "git_blob": "1f44a096cd1f09d7ab91cc8c7db73421a9e441fa",
+      "sha256": "7a88b06e3c2284512b77ff10a85c33daa77e1391a42ed4812474de6acfe11d8b",
+      "mode": "100644"
+    },
+    "weather_alpha/settlement/precision.py": {
+      "git_blob": "53625d2c869f384dc3f56a1bc3096a06b63038dd",
+      "sha256": "24bdb930a5446151ce2c37ea541d86a64535cee5eca1891a0ba693e39862450e",
+      "mode": "100644"
+    },
+    "weather_alpha/settlement/reconstruction.py": {
+      "git_blob": "aeac4df405df73abe5d38bf751986471872a78c6",
+      "sha256": "93447a0c2b1bb540b2429f84b4700d2ff9f286dc4881f3af87cd5f05d8e19ff5",
+      "mode": "100644"
+    },
+    "weather_alpha/settlement/stations.py": {
+      "git_blob": "7e8c0e1a536f5f8f9d0d58dd174c3dffe212d295",
+      "sha256": "bd8e727c52e1520068bbcd83538c4efeb400199e2eb9d9e8b8dfc453782d00eb",
+      "mode": "100644"
+    },
+    "weather_alpha/signals.py": {
+      "git_blob": "184872241de1e17fc38bb61193abb9320c826840",
+      "sha256": "b02b5cc4d1347efddd5ba84ae720f17b1139d3539a84181f9a9dd6963f24c1dc",
+      "mode": "100644"
+    },
+    "weather_alpha/storage.py": {
+      "git_blob": "24b788b9c5f05ad46fdb2ddf1011a5656b533e1c",
+      "sha256": "a43ee0cce0cc7f086e2b3cf7d0556e6d751e7ba042df57789dc9ff067441b92d",
+      "mode": "100644"
+    }
+  },
+  "requirements_lock_sha256": "964616dd2535b0af2c9981007edf9873ed26bb4b44fa290622bab0de66e05497",
+  "wheel_sha256": "dea8df7b97d5d70698b0beaf1be9934c0c8f955ae5e36b34186fb6ffb655ac5c",
+  "validation": {
+    "tests_passed": 237,
+    "imports_passed": 73,
+    "cli_checks_passed": 70,
+    "pip_check": "PASS",
+    "deployment_dry_runs": "PASS"
+  },
+  "production_migrated": false
+}
