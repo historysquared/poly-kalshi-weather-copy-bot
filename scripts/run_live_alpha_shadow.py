@@ -247,6 +247,23 @@ def monotonic_signals(group: list[dict[str, Any]], snapshot: str, basis_margin_f
     return out
 
 
+def timestamp_age_seconds(value: Any, now: datetime) -> float | None:
+    """Unknown, timezone-less and future timestamps are not fresh data."""
+    try:
+        stamp = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        if stamp.tzinfo is None or stamp.utcoffset() is None:
+            return None
+        age = (now - stamp.astimezone(timezone.utc)).total_seconds()
+        return age if age >= 0 else None
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def quote_is_fresh(quote: dict[str, Any], now: datetime, max_age_seconds: float) -> bool:
+    age = timestamp_age_seconds(quote.get("local_receive_timestamp"), now)
+    return age is not None and age <= max_age_seconds
+
+
 def run_cycle(args: argparse.Namespace, state: dict[str, Any], health: StrategyHealth) -> int:
     catalog_time, rows = catalog_snapshot(args.catalog)
     bbo_time, bbo_quotes = load_live_bbo(args.bbo)
@@ -260,10 +277,11 @@ def run_cycle(args: argparse.Namespace, state: dict[str, Any], health: StrategyH
         return 0
 
     now = datetime.now(timezone.utc)
-    catalog_dt = datetime.fromisoformat(catalog_time.replace("Z", "+00:00")).astimezone(timezone.utc)
-    bbo_dt = datetime.fromisoformat(bbo_time.replace("Z", "+00:00")).astimezone(timezone.utc)
-    catalog_age = (now - catalog_dt).total_seconds()
-    bbo_age = (now - bbo_dt).total_seconds()
+    catalog_age = timestamp_age_seconds(catalog_time, now)
+    bbo_age = timestamp_age_seconds(bbo_time, now)
+    if catalog_age is None or bbo_age is None:
+        health.report("ERROR", "INVALID_INPUT_TIMESTAMP")
+        return 0
     if catalog_age > args.max_catalog_age_seconds:
         print(f"alpha_shadow stale_catalog age_s={catalog_age:.1f}", flush=True)
         health.report("ERROR", "STALE_MARKET_CATALOG", age_seconds=catalog_age)
@@ -276,14 +294,23 @@ def run_cycle(args: argparse.Namespace, state: dict[str, Any], health: StrategyH
     enriched_snapshot, enriched_rows = latest_snapshot(args.contract_history)
     surface_fresh = False
     if enriched_snapshot:
-        enriched_dt = datetime.fromisoformat(enriched_snapshot.replace("Z", "+00:00")).astimezone(timezone.utc)
-        surface_fresh = (now - enriched_dt).total_seconds() <= args.max_surface_age_seconds
+        surface_age = timestamp_age_seconds(enriched_snapshot, now)
+        surface_fresh = surface_age is not None and surface_age <= args.max_surface_age_seconds
     enriched_by_ticker = {
         str(r.get("ticker") or ""): r for r in enriched_rows
     } if surface_fresh else {}
 
+    # Drop the whole event if any leg is missing/stale, rather than treating
+    # a reduced set of available prices as a complete basket.
+    invalid_events = {
+        str(row.get("event_id") or "") for row in rows
+        if not quote_is_fresh(bbo_quotes.get(str(row.get("ticker") or "")) or {},
+                              now, args.max_snapshot_age_seconds)
+    }
     priced_rows: list[dict[str, Any]] = []
     for row in rows:
+        if str(row.get("event_id") or "") in invalid_events:
+            continue
         ticker = str(row.get("ticker") or "")
         quote = bbo_quotes.get(ticker)
         if not quote:
@@ -321,7 +348,7 @@ def run_cycle(args: argparse.Namespace, state: dict[str, Any], health: StrategyH
         health.report(
             "DEGRADED", "UNIVERSE_COVERAGE_INCOMPLETE", snapshot_time=bbo_time,
             events=len(by_event), required_events=args.minimum_event_coverage,
-            bbo_quotes=len(bbo_quotes), input=str(args.bbo),
+            bbo_quotes=len(bbo_quotes), invalid_quote_events=len(invalid_events), input=str(args.bbo),
         )
         print(
             f"alpha_shadow coverage_fail events={len(by_event)} required={args.minimum_event_coverage}",
@@ -346,13 +373,14 @@ def run_cycle(args: argparse.Namespace, state: dict[str, Any], health: StrategyH
 
     state["last_snapshot"] = bbo_time
     state["last_input_snapshot"] = current_input_key
-    status = "OK" if surface_fresh else "DEGRADED"
-    reason = "CYCLE_OK" if surface_fresh else "SURFACE_ENRICHMENT_STALE_OR_MISSING"
+    status = "OK" if surface_fresh and not invalid_events else "DEGRADED"
+    reason = ("INVALID_OR_STALE_QUOTE_EVENTS" if invalid_events else
+              "CYCLE_OK" if surface_fresh else "SURFACE_ENRICHMENT_STALE_OR_MISSING")
     health.report(
         status, reason, snapshot_time=bbo_time, catalog_time=catalog_time,
         surface_snapshot=enriched_snapshot, surface_fresh=surface_fresh,
         events=len(by_event), candidates=len(candidates), emitted=emitted,
-        total_seen=len(seen), bbo_quotes=len(bbo_quotes),
+        total_seen=len(seen), bbo_quotes=len(bbo_quotes), invalid_quote_events=len(invalid_events),
     )
     save_state(args.state, state)
     print(
