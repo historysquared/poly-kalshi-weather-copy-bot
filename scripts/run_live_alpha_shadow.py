@@ -80,6 +80,10 @@ def catalog_snapshot(path: Path) -> tuple[str | None, list[dict[str, Any]]]:
             continue
         source_names = [str(x.get("name") or "") for x in (series.get("settlement_sources") or []) if isinstance(x, dict)]
         source_family = "WEATHER_COMPANY" if any("Weather Company" in x for x in source_names) else "UNKNOWN"
+        event_members: dict[str, list[str]] = {}
+        for market in series.get("markets") or []:
+            if isinstance(market, dict):
+                event_members.setdefault(str(market.get("event_ticker") or ""), []).append(str(market.get("ticker") or ""))
         for market in series.get("markets") or []:
             if not isinstance(market, dict):
                 continue
@@ -99,6 +103,10 @@ def catalog_snapshot(path: Path) -> tuple[str | None, list[dict[str, Any]]]:
                 "estimated_no_taker_fee_per_contract": None,
                 "source_family": source_family,
                 "settlement_date": None,
+                "event_contract_ids": event_members.get(str(market.get("event_ticker") or ""), []),
+                # Only an independently verified catalog record may supply this.
+                # Never infer precision/rounding/inclusivity from a ticker/title.
+                "settlement_semantics": market.get("settlement_semantics"),
             })
     return generated, rows
 
@@ -163,9 +171,80 @@ def signal_key(row: dict[str, Any]) -> str:
     return "|".join(str(row.get(k) or "") for k in ("strategy", "event_id", "ticker", "side"))
 
 
+def ladder_validation_reason(group: list[dict[str, Any]]) -> str:
+    if len(group) < 3:
+        return "TOO_FEW_LEGS"
+    tickers = [row.get("ticker") for row in group]
+    if any(not isinstance(t, str) or not t for t in tickers) or len(set(tickers)) != len(tickers):
+        return "DUPLICATE_OR_MISSING_CONTRACT"
+    expected = group[0].get("event_contract_ids")
+    if (not isinstance(expected, list) or any(not isinstance(t, str) or not t for t in expected)
+            or len(set(expected)) != len(expected) or set(expected) != set(tickers)):
+        return "CANONICAL_MEMBERSHIP_INCOMPLETE"
+    event = group[0].get("event_id")
+    if not event or any(row.get("event_id") != event or row.get("event_contract_ids") != expected for row in group):
+        return "MIXED_EVENT_OR_MEMBERSHIP"
+    semantics = [row.get("settlement_semantics") for row in group]
+    basis_fields = ("source", "station", "date", "measurement", "window", "unit", "rounding", "value_domain")
+    for meta in semantics:
+        if (not isinstance(meta, dict) or meta.get("mapping_status") != "EXACT"
+                or not isinstance(meta.get("evidence"), str) or not meta["evidence"].strip()
+                or any(not isinstance(meta.get(k), str) or not meta[k].strip() for k in basis_fields)):
+            return "SETTLEMENT_SEMANTICS_UNVERIFIED"
+        if type(meta.get("lower_inclusive")) is not bool or type(meta.get("upper_inclusive")) is not bool:
+            return "INCLUSIVITY_UNVERIFIED"
+    basis = tuple(semantics[0][k] for k in basis_fields)
+    if any(tuple(meta[k] for k in basis_fields) != basis for meta in semantics):
+        return "MIXED_SETTLEMENT_BASIS"
+    domain = semantics[0]["value_domain"]
+    if (semantics[0]["unit"] != "F" or
+            (domain, semantics[0]["rounding"]) not in {("INTEGER", "WHOLE_DEGREE"), ("CONTINUOUS", "NONE")}):
+        return "UNSUPPORTED_PRECISION"
+    intervals = []
+    shapes = []
+    for row, meta in zip(group, semantics):
+        shape = row.get("shape")
+        shapes.append(shape)
+        try:
+            lo = None if row.get("lower") is None else Decimal(str(row["lower"]))
+            hi = None if row.get("upper") is None else Decimal(str(row["upper"]))
+        except Exception:
+            return "INVALID_BOUND"
+        if any(x is not None and not x.is_finite() for x in (lo, hi)):
+            return "INVALID_BOUND"
+        if ((shape == "below" and (lo is not None or hi is None))
+                or (shape == "above" and (lo is None or hi is not None))
+                or (shape == "bucket" and (lo is None or hi is None))
+                or shape not in {"below", "bucket", "above"}):
+            return "INVALID_SHAPE_BOUNDS"
+        li, ui = meta["lower_inclusive"], meta["upper_inclusive"]
+        if domain == "INTEGER":
+            if any(x is not None and x != x.to_integral_value() for x in (lo, hi)):
+                return "NONINTEGER_BOUND"
+            if lo is not None and not li: lo += 1
+            if hi is not None and not ui: hi -= 1
+            li = ui = True
+        if lo is not None and hi is not None and (lo > hi or (lo == hi and not (li and ui))):
+            return "EMPTY_OR_REVERSED_INTERVAL"
+        intervals.append((lo, hi, li, ui))
+    if shapes.count("below") != 1 or shapes.count("above") != 1 or shapes.count("bucket") < 1:
+        return "MISSING_OR_DUPLICATE_TAIL"
+    intervals.sort(key=lambda x: (x[0] is not None, x[0] or Decimal(0)))
+    if intervals[0][0] is not None or intervals[-1][1] is not None:
+        return "UNBOUNDED_TAILS_MISSING"
+    for left, right in zip(intervals, intervals[1:]):
+        if left[1] is None or right[0] is None:
+            return "OVERLAPPING_TAILS"
+        if domain == "INTEGER":
+            if left[1] + 1 != right[0]:
+                return "GAP_OR_OVERLAP"
+        elif left[1] != right[0] or left[3] == right[2]:
+            return "GAP_OR_OVERLAP"
+    return "EXACT_PARTITION"
+
+
 def complete_ladder(group: list[dict[str, Any]]) -> bool:
-    shapes = {str(row.get("shape") or "") for row in group}
-    return len(group) >= 3 and "below" in shapes and "above" in shapes and shapes <= {"below", "bucket", "above"}
+    return ladder_validation_reason(group) == "EXACT_PARTITION"
 
 
 def ladder_signals(group: list[dict[str, Any]], snapshot: str, min_locked_edge: float) -> list[dict[str, Any]]:
@@ -176,7 +255,7 @@ def ladder_signals(group: list[dict[str, Any]], snapshot: str, min_locked_edge: 
     settlement_date = group[0].get("settlement_date")
     out: list[dict[str, Any]] = []
     yes_costs = [(D(row.get("yes_ask")), fee(row, "YES")) for row in group]
-    if all(ask is not None for ask, _ in yes_costs):
+    if all(ask is not None and 0 <= ask <= 1 and 0 <= f < float("inf") for ask, f in yes_costs):
         total = sum(float(ask) + f for ask, f in yes_costs if ask is not None)
         edge = 1.0 - total
         if edge >= min_locked_edge:
@@ -185,11 +264,11 @@ def ladder_signals(group: list[dict[str, Any]], snapshot: str, min_locked_edge: 
                 "event_id": event_id, "ticker": event_id + "::ALL_YES", "side": "BASKET_YES",
                 "entry_ask": total, "gross_edge": edge, "net_edge_after_fee": edge,
                 "station": station, "settlement_date": settlement_date,
-                "reasoning": f"Complete exhaustive ladder costs {total:.3f} after quoted fees for fixed 1.000 payout.",
+                "reasoning": f"Verified exhaustive ladder (normal binary settlement) costs {total:.3f} after quoted fees for fixed 1.000 payout.",
                 "legs": len(group), "live_order_submission": False,
             })
     no_costs = [(D(row.get("no_ask")), fee(row, "NO")) for row in group]
-    if all(ask is not None for ask, _ in no_costs):
+    if all(ask is not None and 0 <= ask <= 1 and 0 <= f < float("inf") for ask, f in no_costs):
         total = sum(float(ask) + f for ask, f in no_costs if ask is not None)
         payout = float(len(group) - 1)
         edge = payout - total
@@ -199,7 +278,7 @@ def ladder_signals(group: list[dict[str, Any]], snapshot: str, min_locked_edge: 
                 "event_id": event_id, "ticker": event_id + "::ALL_NO", "side": "BASKET_NO",
                 "entry_ask": total, "gross_edge": edge, "net_edge_after_fee": edge,
                 "station": station, "settlement_date": settlement_date,
-                "reasoning": f"Complete exhaustive NO basket costs {total:.3f} after quoted fees for fixed {payout:.3f} payout.",
+                "reasoning": f"Verified exhaustive NO basket (normal binary settlement) costs {total:.3f} after quoted fees for fixed {payout:.3f} payout.",
                 "legs": len(group), "live_order_submission": False,
             })
     return out
@@ -357,7 +436,11 @@ def run_cycle(args: argparse.Namespace, state: dict[str, Any], health: StrategyH
         return 0
 
     candidates: list[dict[str, Any]] = []
+    ladder_failures: dict[str, int] = {}
     for group in by_event.values():
+        ladder_reason = ladder_validation_reason(group)
+        if ladder_reason != "EXACT_PARTITION":
+            ladder_failures[ladder_reason] = ladder_failures.get(ladder_reason, 0) + 1
         candidates.extend(ladder_signals(group, bbo_time, args.min_locked_edge))
         candidates.extend(monotonic_signals(group, bbo_time, args.basis_margin_f, args.max_lock_price, args.min_lock_price_gap))
     emitted = 0
@@ -373,14 +456,16 @@ def run_cycle(args: argparse.Namespace, state: dict[str, Any], health: StrategyH
 
     state["last_snapshot"] = bbo_time
     state["last_input_snapshot"] = current_input_key
-    status = "OK" if surface_fresh and not invalid_events else "DEGRADED"
+    status = "OK" if surface_fresh and not invalid_events and not ladder_failures else "DEGRADED"
     reason = ("INVALID_OR_STALE_QUOTE_EVENTS" if invalid_events else
+              "LADDER_VALIDATION_INCOMPLETE" if ladder_failures else
               "CYCLE_OK" if surface_fresh else "SURFACE_ENRICHMENT_STALE_OR_MISSING")
     health.report(
         status, reason, snapshot_time=bbo_time, catalog_time=catalog_time,
         surface_snapshot=enriched_snapshot, surface_fresh=surface_fresh,
         events=len(by_event), candidates=len(candidates), emitted=emitted,
         total_seen=len(seen), bbo_quotes=len(bbo_quotes), invalid_quote_events=len(invalid_events),
+        ladder_validation_failures=ladder_failures,
     )
     save_state(args.state, state)
     print(

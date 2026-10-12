@@ -8,6 +8,14 @@ def base_row(shape, ticker, yes_ask, no_ask, lower=None, upper=None, high=80.0):
         "shape": shape, "lower": lower, "upper": upper, "high_so_far_f": high,
         "yes_ask": yes_ask, "no_ask": no_ask, "estimated_taker_fee_per_contract": 0.0,
         "source_family": "WEATHER_COMPANY",
+        "event_contract_ids": ["A", "B", "C"],
+        "settlement_semantics": {
+            "mapping_status": "EXACT", "evidence": "verified synthetic test fixture",
+            "source": "TWC", "station": "KXYZ", "date": "2026-09-28",
+            "measurement": "DAILY_HIGH", "window": "verified-window", "unit": "F",
+            "rounding": "WHOLE_DEGREE", "value_domain": "INTEGER",
+            "lower_inclusive": shape == "bucket", "upper_inclusive": shape == "bucket",
+        },
     }
 
 
@@ -115,8 +123,9 @@ def test_fresh_envelope_cannot_hide_invalid_individual_leg(tmp_path,bad):
 def test_fresh_individual_quotes_still_reach_strategy(tmp_path):
     _,_,payload,args,health=_cycle_fixture(tmp_path)
     args.bbo.write_text(json.dumps(payload))
-    assert run_cycle(args,{},health)==1
-    # The independent ladder-semantic blocker remains for the next bounded fix.
+    assert run_cycle(args,{},health)==0
+    # Fresh quotes are eligible, but unverified settlement metadata blocks baskets.
+    assert json.loads(health.status_path.read_text())["invalid_quote_events"] == 0
 
 
 @pytest.mark.parametrize('value',['bad','2026-10-12T01:00:00'])
@@ -125,3 +134,94 @@ def test_invalid_envelope_timestamp_abstains_with_health(tmp_path,value):
     payload['generated_at']=value;args.bbo.write_text(json.dumps(payload))
     assert run_cycle(args,{},health)==0
     assert json.loads(health.status_path.read_text())['reason']=='INVALID_INPUT_TIMESTAMP'
+
+
+from copy import deepcopy
+from scripts.run_live_alpha_shadow import complete_ladder, ladder_validation_reason, catalog_snapshot
+
+
+def _verified_ladder():
+    return [base_row("below", "A", .2, .1, upper=70),
+            base_row("bucket", "B", .2, .1, lower=70, upper=75),
+            base_row("above", "C", .2, .1, lower=75)]
+
+
+def test_verified_integer_partition_yes_and_no_payouts():
+    rows = _verified_ladder()
+    assert complete_ladder(rows)
+    signals = ladder_signals(rows, "test", .02)
+    assert {x["side"] for x in signals} == {"BASKET_YES", "BASKET_NO"}
+    assert next(x for x in signals if x["side"] == "BASKET_NO")["net_edge_after_fee"] == pytest.approx(1.7)
+    assert complete_ladder(list(reversed(rows)))
+
+
+@pytest.mark.parametrize("fault", ["gap", "overlap", "duplicate_ticker", "missing_leg", "extra_leg",
+    "mixed_event", "mixed_station", "mixed_date", "mixed_source", "mixed_measurement", "mixed_window",
+    "unknown_rounding", "no_evidence", "unverified", "missing_semantics", "missing_inclusivity",
+    "noninteger", "nan_bound", "reversed", "missing_tail", "missing_membership", "different_membership"])
+def test_invalid_ladder_never_emits(fault):
+    rows = _verified_ladder()
+    if fault == "gap": rows[1]["lower"] = 71
+    elif fault == "overlap": rows[1]["lower"] = 69
+    elif fault == "duplicate_ticker": rows[1]["ticker"] = "A"
+    elif fault == "missing_leg": rows.pop(1)
+    elif fault == "extra_leg": rows.append(deepcopy(rows[1])); rows[-1]["ticker"] = "D"
+    elif fault == "mixed_event": rows[1]["event_id"] = "OTHER"
+    elif fault.startswith("mixed_"): rows[1]["settlement_semantics"][fault[6:]] = "OTHER"
+    elif fault == "unknown_rounding": rows[1]["settlement_semantics"]["rounding"] = "UNKNOWN"
+    elif fault == "no_evidence": rows[1]["settlement_semantics"]["evidence"] = ""
+    elif fault == "unverified": rows[1]["settlement_semantics"]["mapping_status"] = "REVIEW"
+    elif fault == "missing_semantics": rows[1].pop("settlement_semantics")
+    elif fault == "missing_inclusivity": rows[1]["settlement_semantics"].pop("lower_inclusive")
+    elif fault == "noninteger": rows[1]["lower"] = 70.5
+    elif fault == "nan_bound": rows[1]["lower"] = "NaN"
+    elif fault == "reversed": rows[1]["lower"] = 76
+    elif fault == "missing_tail": rows[0]["shape"] = "bucket"; rows[0]["lower"] = 0
+    elif fault == "missing_membership": rows[1].pop("event_contract_ids")
+    elif fault == "different_membership": rows[1]["event_contract_ids"] = ["A", "B", "D"]
+    assert not complete_ladder(rows)
+    assert ladder_signals(rows, "test", .01) == []
+
+
+@pytest.mark.parametrize("left_inclusive,right_inclusive,expected", [(True,False,True),(False,True,True),(True,True,False),(False,False,False)])
+def test_continuous_boundary_requires_exactly_one_owner(left_inclusive,right_inclusive,expected):
+    rows = _verified_ladder()
+    for row in rows:
+        row["settlement_semantics"].update(value_domain="CONTINUOUS",rounding="NONE")
+    rows[0]["settlement_semantics"]["upper_inclusive"] = left_inclusive
+    rows[1]["settlement_semantics"]["lower_inclusive"] = right_inclusive
+    rows[1]["settlement_semantics"]["upper_inclusive"] = True
+    rows[2]["settlement_semantics"]["lower_inclusive"] = False
+    assert complete_ladder(rows) is expected
+
+
+@pytest.mark.parametrize("price", [None, float("nan"), float("inf"), -0.1, 1.1])
+def test_invalid_price_cannot_generate_basket_side(price):
+    rows = _verified_ladder(); rows[1]["yes_ask"] = price
+    assert not any(x["side"] == "BASKET_YES" for x in ladder_signals(rows, "test", .01))
+
+
+def test_catalog_carries_full_membership_without_inventing_semantics(tmp_path):
+    _,tickers,_,args,_ = _cycle_fixture(tmp_path)
+    _,rows = catalog_snapshot(args.catalog)
+    assert all(row["event_contract_ids"] == tickers for row in rows)
+    assert all(row["settlement_semantics"] is None for row in rows)
+    assert not complete_ladder(rows)
+
+
+def test_verified_catalog_event_reaches_ladder_and_missing_quote_cannot_reduce_it(tmp_path):
+    _,tickers,payload,args,health = _cycle_fixture(tmp_path)
+    catalog = json.loads(args.catalog.read_text())
+    markets = catalog['active_series'][0]['markets']
+    verified = _verified_ladder()
+    for market, row in zip(markets,verified):
+        market['floor_strike']=row['lower'];market['cap_strike']=row['upper']
+        market['settlement_semantics']=deepcopy(row['settlement_semantics'])
+    args.catalog.write_text(json.dumps(catalog));args.bbo.write_text(json.dumps(payload))
+    assert run_cycle(args,{},health)==1
+    assert json.loads(health.status_path.read_text())['ladder_validation_failures']=={}
+    # Removing any leg's quote must reject the whole canonical event.
+    args.signals_output.unlink();del payload['quotes'][tickers[1]]
+    args.bbo.write_text(json.dumps(payload))
+    assert run_cycle(args,{},health)==0
+    assert not args.signals_output.exists()
